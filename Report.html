@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventory Reports</title>
+<link rel="icon" type="image/png" href="https://www.pristinepearlpharma.in/images/alt-logo.png">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0fdf4; /* emerald-50 */
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #86efac;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #4ade80;
+        }
+
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: #166534;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="min-h-screen py-8 px-4 sm:px-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 text-center sm:text-left flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+        <h1 class="text-3xl font-bold text-emerald-900 flex items-center justify-center sm:justify-start gap-3">
+            <i data-lucide="file-spreadsheet" class="w-8 h-8 text-emerald-600"></i>
+            HR Inventory Reports
+        </h1>
+        <p class="text-emerald-700 mt-1">Direct data retrieval from Inventory System</p>
+    </div>
+    
+    <div class="flex items-center gap-4 justify-center sm:justify-end">
+        <div id="statusMessage" class="hidden px-4 py-2 rounded-lg text-sm font-medium animate-pulse"></div>
+        
+        <a href="index.html" class="flex items-center gap-2 px-5 py-2 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 font-semibold rounded-xl transition-all shadow-sm active:scale-95">
+            <i data-lucide="home" class="w-4 h-4"></i>
+            Back to Home
+        </a>
+    </div>
+</header>
+        <!-- Main Card -->
+        <div class="bg-white rounded-2xl shadow-xl shadow-emerald-900/5 border border-emerald-100 overflow-hidden">
+            <!-- Controls Bar -->
+            <div class="p-5 border-b border-emerald-50 bg-emerald-50/30">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                    
+                    <!-- Report Selection -->
+                    <div class="lg:col-span-4">
+                        <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Select Report Type</label>
+                        <div class="relative">
+                            <select id="reportType" class="w-full pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 appearance-none text-emerald-900 font-medium">
+                                <optgroup label="Inventory & Logs">
+                                    <option value="getInventory">Current Inventory Stock</option>
+                                    <option value="getRequestReport">Full Request Log</option>
+                                    <option value="getReceiptReport">Purchase Receipts</option>
+                                    <option value="getSupplyReport">Supply Issuance Log</option>
+                                </optgroup>
+                                <optgroup label="Operational Reports">
+                                    <option value="getProducts">Product Master List</option>
+                                    <option value="getEmployeeList">Employee Directory</option>
+                                    <option value="getVendors">Vendor Directory</option>
+                                </optgroup>
+                            </select>
+                            <i data-lucide="layers" class="absolute left-3 top-3 w-4 h-4 text-emerald-500"></i>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Date From</label>
+                        <input type="date" id="dateFrom" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm">
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Date To</label>
+                        <input type="date" id="dateTo" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm">
+                    </div>
+<div class="lg:col-span-2 hidden" id="teamFilterWrap">
+  <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Team</label>
+  <select id="teamFilter" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm">
+    <option value="">All Teams</option>
+  </select>
+</div>
+
+                    <!-- Actions -->
+                    <div class="lg:col-span-4 flex gap-2">
+                        <button onclick="loadReport()" id="loadBtn" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-lg active:scale-95">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Run Report
+                        </button>
+                        <button onclick="downloadExcel()" id="downloadBtn" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-white border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-xl transition-all active:scale-95">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+<div class="px-5 pt-5 pb-2 hidden" id="dashboardHeader">
+  <h2 class="text-xl font-bold text-emerald-900">Analytics Dashboard</h2>
+  <p class="text-sm text-emerald-600">Stock movement & supply insights</p>
+</div>
+
+<!-- ===== Summary Dashboard ===== -->
+<div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 bg-white border-b border-emerald-100 hidden">
+
+  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
+    <p class="text-xs text-emerald-600 font-bold uppercase">Total Records</p>
+    <p id="sumRecords" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
+  </div>
+
+  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
+    <p class="text-xs text-emerald-600 font-bold uppercase">Total Quantity</p>
+    <p id="sumQty" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
+  </div>
+
+  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
+    <p class="text-xs text-emerald-600 font-bold uppercase">Total Value</p>
+    <p id="sumValue" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
+  </div>
+
+</div>
+<!-- ===== Charts Section ===== -->
+<div id="chartsSection" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6 hidden">
+
+  <div class="bg-white rounded-2xl shadow p-4 h-64">
+    <canvas id="stockChart"></canvas>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow p-4 h-64">
+    <canvas id="monthlyChart"></canvas>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow p-4 h-64 lg:col-span-2">
+    <canvas id="topItemsChart"></canvas>
+  </div>
+
+</div>
+<div id="inventorySearchWrap" class="hidden px-5 pt-4 space-y-2">
+
+  <input
+    type="text"
+    id="inventorySearch"
+    placeholder="Search item, category, or stock..."
+    class="w-full px-4 py-2 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
+    oninput="filterInventoryTable()"
+  />
+
+  <!-- Low stock toggle -->
+  <label class="flex items-center gap-2 text-sm text-emerald-700 font-medium">
+    <input type="checkbox" id="lowStockToggle" onchange="filterInventoryTable()" />
+    Show Low Stock Only (≤ 10)
+  </label>
+
+</div>
+            <!-- Table Container -->
+            <div class="relative">
+                <div id="tableWrapper" class="overflow-auto max-h-[600px] custom-scrollbar bg-white">
+                    <table id="reportTable" class="w-full text-left border-collapse">
+                        <tbody id="placeholderBody">
+                            <tr><td class="py-24 text-center text-emerald-300">
+                                <i data-lucide="search" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>
+                                <p class="text-lg font-medium">Select a report to view data</p>
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Loader -->
+                <div id="loader" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
+                    <div class="flex flex-col items-center gap-3"><div class="spinner"></div><p class="text-emerald-800 font-semibold">Fetching Data...</p></div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 bg-emerald-50 border-t border-emerald-100 flex justify-between items-center text-xs text-emerald-600 font-bold uppercase tracking-wider">
+                <span id="rowCount">0 Records</span>
+                <div id="filterStatus" class="italic text-emerald-500 text-right"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="alertModal" class="hidden fixed inset-0 bg-emerald-950/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
+            <div id="alertIcon" class="mx-auto mb-4 w-12 h-12 flex items-center justify-center rounded-full"></div>
+            <h3 id="alertTitle" class="text-lg font-bold text-gray-900 mb-2"></h3>
+            <p id="alertText" class="text-gray-600 mb-6 text-sm"></p>
+            <button onclick="closeAlert()" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors">Dismiss</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbwGjN8X3EwhuiflCOKFsC0z11CzNcvq9M4LoQ1wuwKMoJhO2bDOnFdALkh07KQ-UeDy/exec";
+        let currentData = [];
+
+        lucide.createIcons();
+
+        function showMessage(msg, isError = false) {
+            const el = document.getElementById("statusMessage");
+            el.textContent = msg;
+            el.className = `px-4 py-2 rounded-lg text-sm font-medium ${isError ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`;
+            el.classList.remove("hidden");
+            setTimeout(() => el.classList.add("hidden"), 4000);
+        }
+
+        function showAlert(title, text, type = 'info') {
+            document.getElementById("alertTitle").textContent = title;
+            document.getElementById("alertText").textContent = text;
+            const icon = document.getElementById("alertIcon");
+            icon.innerHTML = type === 'error' ? '<i data-lucide="alert-circle" class="w-8 h-8 text-red-600"></i>' : '<i data-lucide="info" class="w-8 h-8 text-emerald-600"></i>';
+            icon.className = `mx-auto mb-4 w-12 h-12 flex items-center justify-center rounded-full ${type === 'error' ? 'bg-red-100' : 'bg-emerald-100'}`;
+            document.getElementById("alertModal").classList.remove("hidden");
+            lucide.createIcons();
+        }
+
+        function closeAlert() { document.getElementById("alertModal").classList.add("hidden"); }
+
+        function parseSheetDate(val) {
+            if (!val) return null;
+            if (val instanceof Date) return val;
+            const dateStr = val.toString().trim();
+            if (dateStr.includes('T') && dateStr.includes('Z')) {
+                const d = new Date(dateStr);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const mainParts = dateStr.split(' ');
+            const dParts = mainParts[0].split(/[\/\-]/);
+            if (dParts.length === 3) {
+                const day = parseInt(dParts[0], 10);
+                const month = parseInt(dParts[1], 10) - 1; 
+                const year = parseInt(dParts[2], 10);
+                if (year < 1000) return null;
+                const d = new Date(year, month, day);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const fallback = new Date(dateStr);
+            return isNaN(fallback.getTime()) ? null : fallback;
+        }
+
+        function formatDateForDisplay(val) {
+            const d = parseSheetDate(val);
+            if (!d) return val;
+            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        }
+
+        async function loadReport() {
+            const reportAction = document.getElementById("reportType").value;
+// Show inventory search only for Current Inventory
+const searchWrap = document.getElementById("inventorySearchWrap");
+if (reportAction === "getInventory") {
+    searchWrap.classList.remove("hidden");
+} else {
+    searchWrap.classList.add("hidden");
+    document.getElementById("inventorySearch").value = "";
+}
+// Show team filter only for Supply Issuance
+const teamWrap = document.getElementById("teamFilterWrap");
+if (reportAction === "getSupplyReport") {
+    teamWrap.classList.remove("hidden");
+} else {
+    teamWrap.classList.add("hidden");
+    document.getElementById("teamFilter").value = "";
+}
+            const fromDateVal = document.getElementById("dateFrom").value;
+            const toDateVal = document.getElementById("dateTo").value;
+            
+            document.getElementById("loader").classList.remove("hidden");
+            document.getElementById("loadBtn").disabled = true;
+
+            try {
+                
+                // 2. Fetch main report data
+                const res = await fetch(API_URL, { 
+                    method: "POST", 
+                    body: JSON.stringify({ action: reportAction }) 
+                });
+                const data = await res.json();
+
+                if (!data.success) {
+                    showAlert("Fetch Error", data.message || "Could not retrieve data.", "error");
+                    return;
+                }
+
+                let rows = [];
+
+if (data.rows) rows = data.rows;
+else if (data.inventory) rows = data.inventory;
+else if (data.receipts) rows = data.receipts;
+else if (data.supplies) rows = data.supplies;
+else if (data.requests) rows = data.requests;
+else if (data.employees) rows = data.employees;
+else if (data.products) rows = data.products;
+else if (data.vendors) rows = data.vendors;
+
+
+                // 3. Process Rows
+                if (reportAction === "getInventory") {
+                    rows = rows.filter(r => (parseFloat(r.CurrentStock || r.Balance || r.Qty || 0) > 0));
+                }
+
+             // Supply Issuance Log Mapping (FIXED - Map Team from Employee Directory)
+if (reportAction === "getSupplyReport") {
+
+    // 🔹 First fetch employee directory
+    const empRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getEmployeeList" })
+    });
+
+    const empData = await empRes.json();
+    const empList = empData.employees || [];
+// Fill team dropdown
+const teamSet = new Set();
+empList.forEach(e => {
+    const t = e["Team Wise"] || e["Team wise"] || e["Team"];
+    if (t) teamSet.add(t);
+});
+
+const teamSelect = document.getElementById("teamFilter");
+teamSelect.innerHTML =
+    `<option value="">All Teams</option>` +
+    [...teamSet].sort().map(t => `<option value="${t}">${t}</option>`).join("");
+
+    rows = rows.map(r => {
+
+        // 🔹 Find matching employee from directory
+        const emp = empList.find(e =>
+            String(e["Employee Code"] || "").trim() === String(r.empCode).trim()
+        ) || {};
+
+        return {
+            Date: r.date,
+            "Supply ID": r.supplyId,
+            "Employee Code": r.empCode,
+            "Employee Name": r.empName,
+
+            // 🔥 TEAM NOW COMES FROM EMPLOYEE DIRECTORY
+            "Team Wise": emp["Team Wise"] || emp["Team wise"] || emp["Team"] || "",
+
+            Item: r.item,
+            Qty: r.qty,
+            MRP: r.mrp,
+            Total: r.total
+        };
+    });
+}
+                
+
+                // Employee Directory custom view
+                if (reportAction === "getEmployeeList") {
+
+    rows = rows.map(r => ({
+        "Emp Code": r["Employee Code"] || r["EmployeeCode"] || "",
+        "Name": r["Employee Name"] || "",
+        "Team Wise": r["Team Wise"] || r["Team wise"] || r["Team"] || ""
+    }));
+}
+                // DATE FILTER
+                const logActions = ['getRequestReport', 'getReceiptReport', 'getSupplyReport', 'getPendingRequests'];
+                if (logActions.includes(reportAction) && (fromDateVal || toDateVal)) {
+                    const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
+                    const end = toDateVal ? new Date(toDateVal + "T23:59:59") : null;
+
+                    rows = rows.filter(r => {
+                        const rawDate = r.Date || r.EntryDate || r.Timestamp || r.reqDate || r.DateOfEntry || r.IssueDate;
+                        if (!rawDate) return true;
+                        const rowDate = parseSheetDate(rawDate);
+                        if (!rowDate) return true;
+                        if (start && rowDate < start) return false;
+                        if (end && rowDate > end) return false;
+                        return true;
+                    });
+                }
+// Apply Team filter (Supply only)
+if (reportAction === "getSupplyReport") {
+    const selectedTeam = document.getElementById("teamFilter").value;
+
+    if (selectedTeam) {
+        rows = rows.filter(r =>
+            String(r["Team Wise"] || "").trim() === selectedTeam.trim()
+        );
+    }
+}
+
+                currentData = rows;
+                renderTable(currentData);
+
+// Show dashboard ONLY for Supply Issuance
+if (reportAction === "getSupplyReport" && currentData.length) {
+
+    document.getElementById("dashboardHeader").classList.remove("hidden");
+
+    updateSummary(currentData);
+    drawCharts(currentData, reportAction);
+
+} else {
+
+    document.getElementById("dashboardHeader").classList.add("hidden");
+    document.getElementById("summaryCards").classList.add("hidden");
+    document.getElementById("chartsSection").classList.add("hidden");
+}
+                document.getElementById("rowCount").textContent = `${currentData.length} Records`;
+                document.getElementById("filterStatus").textContent = (fromDateVal || toDateVal) ? `Filtered: ${fromDateVal} to ${toDateVal}` : "Full Dataset";
+                showMessage("Report Loaded");
+
+            } catch (err) {
+                showAlert("Connection Error", "Check Internet or Apps Script deployment.", "error");
+                console.error(err);
+            } finally {
+                document.getElementById("loader").classList.add("hidden");
+                document.getElementById("loadBtn").disabled = false;
+            }
+        }
+
+        function renderTable(rows) {
+            const table = document.getElementById("reportTable");
+            table.innerHTML = "";
+            if (!rows.length) {
+                table.innerHTML = `<tr><td class="py-24 text-center text-emerald-400">No records found for the selection.</td></tr>`;
+                return;
+            }
+
+            // FILTER: Hide specific system or unwanted columns
+            const headers = Object.keys(rows[0]).filter(h => {
+                const low = h.toLowerCase();
+                // "division" and "category" are hidden from UI
+                return !['success', 'message', 'id', 'division', 'category'].includes(low);
+            });
+            
+            let html = `<thead class="bg-emerald-600 sticky top-0 z-20"><tr>`;
+            headers.forEach(h => html += `<th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 last:border-0">${h}</th>`);
+            html += `</tr></thead><tbody class="divide-y divide-emerald-100">`;
+
+            rows.forEach((r, idx) => {
+                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'} hover:bg-emerald-100/50 transition-colors">`;
+                headers.forEach(h => {
+                    let val = r[h] ?? "";
+                    const lowerH = h.toLowerCase();
+                    if (lowerH.includes('date') || lowerH.includes('timestamp')) {
+                        val = formatDateForDisplay(val);
+                    }
+                    html += `<td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap">${val}</td>`;
+                });
+                html += `</tr>`;
+            });
+            table.innerHTML = html + "</tbody>";
+        }
+
+        function downloadExcel() {
+
+    const reportAction = document.getElementById("reportType").value;
+
+// Clear previous inventory filter when switching report
+if (reportAction !== "getInventory") {
+    window.filteredInventory = null;
+}
+
+let exportData = currentData;
+
+// Use filtered set ONLY for Current Inventory
+if (reportAction === "getInventory" && window.filteredInventory?.length) {
+    exportData = window.filteredInventory;
+}
+
+    if (!exportData.length) {
+        return showAlert("Notice", "Nothing to export", "info");
+    }
+
+    let table = "<table border='1'><tr>";
+            const headers = Object.keys(exportData[0]).filter(h => {
+                const low = h.toLowerCase();
+                return !['success', 'message', 'division', 'category'].includes(low);
+            });
+            headers.forEach(h => table += `<th style='background:#059669;color:white'>${h}</th>`);
+            table += "</tr>";
+            exportData.forEach(r => {
+                table += "<tr>";
+                headers.forEach(h => {
+                    let v = r[h] ?? "";
+                    if (h.toLowerCase().includes('date') || h.toLowerCase().includes('timestamp')) v = formatDateForDisplay(v);
+                    table += `<td>${v}</td>`;
+                });
+                table += "</tr>";
+            });
+            const blob = new Blob([table + "</table>"], { type: "application/vnd.ms-excel" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `Inventory_Report_${new Date().toISOString().slice(0,10)}.xls`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+function updateSummary(rows) {
+    document.getElementById("summaryCards").classList.remove("hidden");
+
+    let totalQty = 0;
+    let totalVal = 0;
+
+    rows.forEach(r => {
+        totalQty += Number(r.Qty || r.Quantity || 0);
+        totalVal += Number(r.Total || r.Value || 0);
+    });
+
+    document.getElementById("sumRecords").textContent = rows.length;
+    document.getElementById("sumQty").textContent = totalQty;
+    document.getElementById("sumValue").textContent = totalVal.toFixed(2);
+}
+let charts = [];
+
+function drawCharts(rows, action) {
+if (!rows.length) return;
+    document.getElementById("chartsSection").classList.remove("hidden");
+
+    charts.forEach(c => c.destroy());
+    charts = [];
+
+    // ===== Stock Trend (by date) =====
+    const byDate = {};
+    rows.forEach(r => {
+        const d = formatDateForDisplay(r.Date || r.EntryDate || "");
+        if (!d) return;
+        byDate[d] = (byDate[d] || 0) + parseFloat(r.Qty || 0);
+    });
+
+    charts.push(new Chart(document.getElementById("stockChart"), {
+        type: "line",
+        data: {
+            labels: Object.keys(byDate),
+            datasets: [{ label: "Stock Movement", data: Object.values(byDate) }]
+        },
+options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { position: "bottom" }
+    }
+}
+    }));
+
+
+    // ===== Monthly Supply Usage =====
+    const byMonth = {};
+    rows.forEach(r => {
+        const d = parseSheetDate(r.Date || "");
+        if (!d) return;
+        const key = `${d.getMonth()+1}/${d.getFullYear()}`;
+        byMonth[key] = (byMonth[key] || 0) + parseFloat(r.Qty || 0);
+    });
+
+    charts.push(new Chart(document.getElementById("monthlyChart"), {
+        type: "bar",
+        data: {
+            labels: Object.keys(byMonth),
+            datasets: [{ label: "Monthly Usage", data: Object.values(byMonth) }]
+        },
+options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { position: "bottom" }
+    }
+}
+    }));
+
+
+    // ===== Top Issued Items =====
+    const byItem = {};
+    rows.forEach(r => {
+        const item = r.Item || "Unknown";
+        byItem[item] = (byItem[item] || 0) + parseFloat(r.Qty || 0);
+    });
+
+    const top = Object.entries(byItem)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0,5);
+
+    charts.push(new Chart(document.getElementById("topItemsChart"), {
+        type: "pie",
+        data: {
+            labels: top.map(x=>x[0]),
+            datasets: [{ data: top.map(x=>x[1]) }]
+        },
+options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { position: "bottom" }
+    }
+}
+    }));
+}
+function filterInventoryTable() {
+    const term = document.getElementById("inventorySearch").value.toLowerCase();
+    const lowOnly = document.getElementById("lowStockToggle").checked;
+
+    let filtered = currentData.filter(row =>
+        Object.values(row).some(val =>
+            String(val).toLowerCase().includes(term)
+        )
+    );
+
+    // Apply low-stock filter
+    if (lowOnly) {
+        filtered = filtered.filter(r => {
+            const qty = Number(r.CurrentStock || r.Balance || r.Qty || 0);
+            return qty > 0 && qty <= 10;   // ← change 10 anytime
+        });
+    }
+
+    renderTable(filtered);
+    document.getElementById("rowCount").textContent = `${filtered.length} Records`;
+
+    // store filtered rows for export
+    window.filteredInventory = filtered;
+}
+    </script>
+</body>
+</html>
