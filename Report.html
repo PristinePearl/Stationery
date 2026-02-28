@@ -92,6 +92,10 @@
                                     <option value="getEmployeeList">Employee Directory</option>
                                     <option value="getVendors">Vendor Directory</option>
                                 </optgroup>
+<optgroup label="Ledgers">
+    <option value="getEmployeeLedger">Employee Ledger</option>
+    <option value="getProductLedger">Product Ledger</option>
+</optgroup>
                             </select>
                             <i data-lucide="layers" class="absolute left-3 top-3 w-4 h-4 text-emerald-500"></i>
                         </div>
@@ -110,6 +114,21 @@
   <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Team</label>
   <select id="teamFilter" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm">
     <option value="">All Teams</option>
+  </select>
+</div>
+<!-- Employee Filter -->
+<div class="lg:col-span-2 hidden" id="employeeFilterWrap">
+  <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Employee</label>
+  <select id="employeeFilter" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm">
+    <option value="">Select Employee</option>
+  </select>
+</div>
+
+<!-- Product Filter -->
+<div class="lg:col-span-2 hidden" id="productFilterWrap">
+  <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">Product</label>
+  <select id="productFilter" class="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm">
+    <option value="">Select Item</option>
   </select>
 </div>
 
@@ -220,7 +239,8 @@
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbwGjN8X3EwhuiflCOKFsC0z11CzNcvq9M4LoQ1wuwKMoJhO2bDOnFdALkh07KQ-UeDy/exec";
-        let currentData = [];
+        let masterData = [];
+let currentData = [];
 
         lucide.createIcons();
 
@@ -274,6 +294,18 @@
 
         async function loadReport() {
             const reportAction = document.getElementById("reportType").value;
+// Hide all ledger filters initially
+document.getElementById("employeeFilterWrap").classList.add("hidden");
+document.getElementById("productFilterWrap").classList.add("hidden");
+
+// Show relevant filter
+if (reportAction === "getEmployeeLedger") {
+    document.getElementById("employeeFilterWrap").classList.remove("hidden");
+}
+
+if (reportAction === "getProductLedger") {
+    document.getElementById("productFilterWrap").classList.remove("hidden");
+}
 // Show inventory search only for Current Inventory
 const searchWrap = document.getElementById("inventorySearchWrap");
 if (reportAction === "getInventory") {
@@ -316,6 +348,7 @@ if (data.rows) rows = data.rows;
 else if (data.inventory) rows = data.inventory;
 else if (data.receipts) rows = data.receipts;
 else if (data.supplies) rows = data.supplies;
+
 else if (data.requests) rows = data.requests;
 else if (data.employees) rows = data.employees;
 else if (data.products) rows = data.products;
@@ -400,10 +433,144 @@ teamSelect.innerHTML =
                         return true;
                     });
                 }
-// Apply Team filter (Supply only)
+
+// ================= EMPLOYEE LEDGER =================
+if (reportAction === "getEmployeeLedger") {
+
+    // Fetch Supply Only
+    const supplyRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getSupplyReport" })
+    });
+
+    const supplyData = await supplyRes.json();
+    const supplies = supplyData.rows || [];
+
+    // Fetch Employee Directory (for Team mapping)
+    const empRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getEmployeeList" })
+    });
+
+    const empData = await empRes.json();
+    const empList = empData.employees || [];
+
+    // Fill Employee Dropdown
+    const empSelect = document.getElementById("employeeFilter");
+    empSelect.innerHTML =
+        `<option value="">All Employees</option>` +
+        empList.map(e =>
+            `<option value="${e["Employee Code"]}">
+                ${e["Employee Name"]} (${e["Employee Code"]})
+            </option>`
+        ).join("");
+
+    
+
+    rows = supplies.map(r => {
+
+        const emp = empList.find(e =>
+            String(e["Employee Code"]).trim() === String(r.empCode).trim()
+        ) || {};
+
+        return {
+            Date: r.date,
+            "Emp Code": r.empCode,
+            "Emp Name": r.empName,
+            Team: emp["Team Wise"] || emp["Team"] || "",
+            Item: r.item,
+            Qty: Number(r.qty || 0),
+            Value: Number(r.total || 0)
+        };
+    });
+
+   
+}
+
+// ================= PRODUCT LEDGER =================
+if (reportAction === "getProductLedger") {
+
+    // Fetch Receipts
+    const receiptRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getReceiptReport" })
+    });
+    const receiptData = await receiptRes.json();
+    const receipts = receiptData.rows || [];
+
+    // Fetch Supplies
+    const supplyRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getSupplyReport" })
+    });
+    const supplyData = await supplyRes.json();
+    const supplies = supplyData.rows || [];
+
+    const productMap = {};
+
+    // 🔹 Process Receipts (Received + MRP capture)
+    receipts.forEach(r => {
+        const item = r.item;
+        const qty = Number(r.qty || 0);
+        const mrp = Number(r.mrp || 0);
+
+        if (!productMap[item]) {
+            productMap[item] = {
+                Item: item,
+                Received: 0,
+                Supplied: 0,
+                MRP: mrp
+            };
+        }
+
+        productMap[item].Received += qty;
+        productMap[item].MRP = mrp; // latest MRP
+    });
+
+    // 🔹 Process Supplies
+    supplies.forEach(s => {
+        const item = s.item;
+        const qty = Number(s.qty || 0);
+
+        if (!productMap[item]) {
+            productMap[item] = {
+                Item: item,
+                Received: 0,
+                Supplied: 0,
+                MRP: 0
+            };
+        }
+
+        productMap[item].Supplied += qty;
+    });
+
+    // 🔹 Final Calculation
+    rows = Object.values(productMap).map(p => {
+        const remaining = p.Received - p.Supplied;
+
+        return {
+            Item: p.Item,
+            Received: p.Received,
+            Supplied: p.Supplied,
+            Remaining: remaining,
+            MRP: p.MRP,
+            "Total Value": (remaining * p.MRP).toFixed(2)
+        };
+    });
+
+    // Fill Product Dropdown
+    const prodSelect = document.getElementById("productFilter");
+    prodSelect.innerHTML =
+        `<option value="">All Items</option>` +
+        rows.map(r => `<option value="${r.Item}">${r.Item}</option>`).join("");
+
+    
+}
+// ===== APPLY FINAL FILTERS =====
+
+// Team Filter
 if (reportAction === "getSupplyReport") {
     const selectedTeam = document.getElementById("teamFilter").value;
-
     if (selectedTeam) {
         rows = rows.filter(r =>
             String(r["Team Wise"] || "").trim() === selectedTeam.trim()
@@ -411,7 +578,24 @@ if (reportAction === "getSupplyReport") {
     }
 }
 
-                currentData = rows;
+// Employee Ledger Filter
+if (reportAction === "getEmployeeLedger") {
+    const selectedEmp = document.getElementById("employeeFilter").value;
+    if (selectedEmp) {
+        rows = rows.filter(r => r["Emp Code"] === selectedEmp);
+    }
+}
+
+// Product Ledger Filter
+if (reportAction === "getProductLedger") {
+    const selectedItem = document.getElementById("productFilter").value;
+    if (selectedItem) {
+        rows = rows.filter(r => r.Item === selectedItem);
+    }
+}
+
+                masterData = rows;   // store original full data
+applyFilters();      // apply live filters
                 renderTable(currentData);
 
 // Show dashboard ONLY for Supply Issuance
@@ -474,6 +658,42 @@ if (reportAction === "getSupplyReport" && currentData.length) {
             });
             table.innerHTML = html + "</tbody>";
         }
+
+function applyFilters() {
+
+    const reportAction = document.getElementById("reportType").value;
+    let rows = [...masterData];
+
+    // Team Filter
+    if (reportAction === "getSupplyReport") {
+        const selectedTeam = document.getElementById("teamFilter").value;
+        if (selectedTeam) {
+            rows = rows.filter(r =>
+                String(r["Team Wise"] || "").trim() === selectedTeam.trim()
+            );
+        }
+    }
+
+    // Employee Ledger Filter
+    if (reportAction === "getEmployeeLedger") {
+        const selectedEmp = document.getElementById("employeeFilter").value;
+        if (selectedEmp) {
+            rows = rows.filter(r => r["Emp Code"] === selectedEmp);
+        }
+    }
+
+    // Product Ledger Filter
+    if (reportAction === "getProductLedger") {
+        const selectedItem = document.getElementById("productFilter").value;
+        if (selectedItem) {
+            rows = rows.filter(r => r.Item === selectedItem);
+        }
+    }
+
+    currentData = rows;
+    renderTable(currentData);
+    document.getElementById("rowCount").textContent = `${currentData.length} Records`;
+}
 
         function downloadExcel() {
 
@@ -641,6 +861,13 @@ function filterInventoryTable() {
     // store filtered rows for export
     window.filteredInventory = filtered;
 }
+
+// ===== LIVE FILTER EVENTS =====
+
+document.getElementById("teamFilter").addEventListener("change", applyFilters);
+document.getElementById("employeeFilter").addEventListener("change", applyFilters);
+document.getElementById("productFilter").addEventListener("change", applyFilters);
+
     </script>
 </body>
 </html>
