@@ -198,6 +198,23 @@
   </label>
 
 </div>
+
+<!-- ===== Product Ledger View Toggle ===== -->
+<div id="prodLedgerViewToggle" class="hidden px-5 pt-4 pb-2 flex items-center gap-3">
+  <span class="text-xs font-bold text-emerald-700 uppercase">View:</span>
+  <div class="flex rounded-xl overflow-hidden border border-emerald-200 shadow-sm">
+    <button id="btnCondensed" onclick="setProdView('condensed')"
+      class="px-4 py-2 text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 text-white transition-colors">
+      <i data-lucide="layout-list" class="w-3.5 h-3.5"></i> Condensed
+    </button>
+    <button id="btnDetailed" onclick="setProdView('detailed')"
+      class="px-4 py-2 text-xs font-semibold flex items-center gap-1.5 bg-white text-emerald-600 hover:bg-emerald-50 transition-colors">
+      <i data-lucide="list" class="w-3.5 h-3.5"></i> Detailed
+    </button>
+  </div>
+  <span id="prodViewHint" class="text-xs text-emerald-500 italic">Showing summary per product</span>
+</div>
+
             <!-- Table Container -->
             <div class="relative">
                 <div id="tableWrapper" class="overflow-auto max-h-[600px] custom-scrollbar bg-white">
@@ -539,6 +556,16 @@ if (reportAction === "getSupplyReport" || reportAction === "getTeamLedger" || re
     teamWrap.classList.add("hidden");
     document.getElementById("teamFilter").value = "";
 }
+// Show product ledger view toggle only for Product Ledger
+const prodToggle = document.getElementById("prodLedgerViewToggle");
+if (reportAction === "getProductLedger") {
+    prodToggle.classList.remove("hidden");
+    window.prodLedgerView = "condensed"; // always reset to condensed on fresh load
+    setProdView("condensed", true);
+} else {
+    prodToggle.classList.add("hidden");
+    window.prodLedgerView = "condensed";
+}
             const fromDateVal = document.getElementById("dateFrom").value;
             const toDateVal = document.getElementById("dateTo").value;
             
@@ -625,6 +652,19 @@ teamSelect.innerHTML =
     });
 }
                 
+
+                // Purchase Receipts — normalise lowercase API fields to capitalised keys
+                if (reportAction === "getReceiptReport") {
+                    rows = rows.map(r => ({
+                        Date:           r.date        || r.Date        || "",
+                        "Receipt ID":   r.receiptId   || r.ReceiptId   || r.receipt_id || "",
+                        Vendor:         r.vendor      || r.Vendor      || r.supplierName || r.SupplierName || "",
+                        Item:           r.item        || r.Item        || "",
+                        Qty:            Number(r.qty  || r.Qty  || 0),
+                        MRP:            Number(r.mrp  || r.MRP  || 0),
+                        Total:          Number(r.total || r.Total || 0) || (Number(r.qty || 0) * Number(r.mrp || 0))
+                    }));
+                }
 
                 // Employee Directory custom view
                 if (reportAction === "getEmployeeList") {
@@ -1059,6 +1099,15 @@ function applyFilters() {
         if (selectedItem) {
             rows = rows.filter(r => r.Item === selectedItem);
         }
+        currentData = rows;
+        if (window.prodLedgerView === "detailed") {
+            renderProdDetailed(selectedItem);
+        } else {
+            renderTable(rows);
+        }
+        document.getElementById("rowCount").textContent = `${rows.length} Products`;
+        if (rows.length) updateSummary(rows);
+        return;
     }
 
     // Team Ledger — filter detail store, then re-consolidate
@@ -1118,6 +1167,141 @@ function applyFilters() {
     document.getElementById("rowCount").textContent = `${currentData.length} Records`;
     if (currentData.length) updateSummary(currentData);
 }
+
+        // ===== PRODUCT LEDGER VIEW SWITCHER =====
+        function setProdView(mode, noRender) {
+            window.prodLedgerView = mode;
+            const active   = "px-4 py-2 text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 text-white transition-colors";
+            const inactive = "px-4 py-2 text-xs font-semibold flex items-center gap-1.5 bg-white text-emerald-600 hover:bg-emerald-50 transition-colors";
+            document.getElementById("btnCondensed").className = mode === "condensed" ? active : inactive;
+            document.getElementById("btnDetailed").className  = mode === "detailed"  ? active : inactive;
+            document.getElementById("prodViewHint").textContent =
+                mode === "condensed" ? "Showing summary per product" : "Showing all receipts & supplies";
+            if (!noRender) applyFilters();
+        }
+
+        // ===== PRODUCT LEDGER DETAILED VIEW =====
+        function renderProdDetailed(filterItem) {
+            const table = document.getElementById("reportTable");
+            table.innerHTML = "";
+
+            let allReceipts = (window.prodLedgerReceipts || []);
+            let allSupplies = (window.prodLedgerSupplies || []);
+
+            // Get the list of items to render (filtered or all)
+            const items = filterItem
+                ? [filterItem]
+                : [...new Set([
+                    ...allReceipts.map(r => r.Item),
+                    ...allSupplies.map(s => s.Item)
+                  ])].sort();
+
+            if (!items.length) {
+                table.innerHTML = `<tr><td class="py-24 text-center text-emerald-400">No records found.</td></tr>`;
+                return;
+            }
+
+            let totalTxns = 0;
+            let html = `<thead class="bg-emerald-600 sticky top-0 z-20"><tr>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Date</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Emp Code</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Emp Name</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 text-right">Qty</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 text-right">MRP</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase text-right">Value</th>
+            </tr></thead><tbody>`;
+
+            items.forEach(item => {
+                const receipts = allReceipts.filter(r => r.Item === item);
+                const supplies = allSupplies.filter(s => s.Item === item);
+                if (!receipts.length && !supplies.length) return;
+                totalTxns += receipts.length + supplies.length;
+
+                const totalRec = receipts.reduce((s, r) => s + r.Qty, 0);
+                const totalSup = supplies.reduce((s, r) => s + r.Qty, 0);
+                const mrp = receipts.length ? receipts[receipts.length - 1].MRP : (supplies.length ? supplies[0].MRP : 0);
+
+                // ── Item header row ──
+                html += `<tr class="bg-emerald-700">
+                    <td colspan="6" class="px-4 py-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-white font-bold text-sm">${item}</span>
+                            <span class="text-emerald-200 text-xs font-medium">
+                                MRP ₹${Number(mrp).toFixed(2)} &nbsp;·&nbsp;
+                                Received: ${totalRec} &nbsp;·&nbsp;
+                                Supplied: ${totalSup} &nbsp;·&nbsp;
+                                Remaining: <strong class="text-white">${totalRec - totalSup}</strong>
+                            </span>
+                        </div>
+                    </td>
+                </tr>`;
+
+                // ── Receipts sub-header ──
+                if (receipts.length) {
+                    html += `<tr class="bg-blue-600">
+                        <td colspan="6" class="px-4 py-1.5">
+                            <span class="inline-flex items-center gap-1 text-white text-xs font-semibold uppercase tracking-wide">
+                                <i data-lucide="arrow-down-circle" class="w-3.5 h-3.5"></i> Receipts (${receipts.length})
+                            </span>
+                        </td>
+                    </tr>`;
+                    receipts.forEach((r, idx) => {
+                        html += `<tr class="${idx % 2 === 0 ? 'bg-blue-50/50' : 'bg-white'} hover:bg-blue-50 transition-colors">
+                            <td class="px-4 py-3 text-sm text-emerald-950 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                            <td class="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">—</td>
+                            <td class="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">—</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 text-right font-medium">${r.Qty}</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 text-right">₹${Number(r.MRP).toFixed(2)}</td>
+                            <td class="px-4 py-3 text-sm text-blue-700 text-right font-semibold">₹${Number(r.Value).toFixed(2)}</td>
+                        </tr>`;
+                    });
+                    // Receipts subtotal
+                    const recVal = receipts.reduce((s, r) => s + r.Value, 0);
+                    html += `<tr class="bg-blue-100 border-t border-blue-200">
+                        <td colspan="3" class="px-4 py-2 text-xs font-bold text-blue-700 uppercase">Total Received</td>
+                        <td class="px-4 py-2 text-sm font-bold text-blue-700 text-right">${totalRec}</td>
+                        <td class="px-4 py-2"></td>
+                        <td class="px-4 py-2 text-sm font-bold text-blue-700 text-right">₹${recVal.toFixed(2)}</td>
+                    </tr>`;
+                }
+
+                // ── Supplies sub-header ──
+                if (supplies.length) {
+                    html += `<tr class="bg-orange-500">
+                        <td colspan="6" class="px-4 py-1.5">
+                            <span class="inline-flex items-center gap-1 text-white text-xs font-semibold uppercase tracking-wide">
+                                <i data-lucide="arrow-up-circle" class="w-3.5 h-3.5"></i> Supplies (${supplies.length})
+                            </span>
+                        </td>
+                    </tr>`;
+                    supplies.forEach((r, idx) => {
+                        html += `<tr class="${idx % 2 === 0 ? 'bg-orange-50/50' : 'bg-white'} hover:bg-orange-50 transition-colors">
+                            <td class="px-4 py-3 text-sm text-emerald-950 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 whitespace-nowrap">${r["Emp Code"] || "—"}</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 whitespace-nowrap">${r["Emp Name"] || "—"}</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 text-right font-medium">${r.Qty}</td>
+                            <td class="px-4 py-3 text-sm text-emerald-950 text-right">₹${Number(r.MRP).toFixed(2)}</td>
+                            <td class="px-4 py-3 text-sm text-orange-700 text-right font-semibold">₹${Number(r.Value).toFixed(2)}</td>
+                        </tr>`;
+                    });
+                    // Supplies subtotal
+                    const supVal = supplies.reduce((s, r) => s + r.Value, 0);
+                    html += `<tr class="bg-orange-100 border-t border-orange-200">
+                        <td colspan="3" class="px-4 py-2 text-xs font-bold text-orange-700 uppercase">Total Supplied</td>
+                        <td class="px-4 py-2 text-sm font-bold text-orange-700 text-right">${totalSup}</td>
+                        <td class="px-4 py-2"></td>
+                        <td class="px-4 py-2 text-sm font-bold text-orange-700 text-right">₹${supVal.toFixed(2)}</td>
+                    </tr>`;
+                }
+
+                // ── Item spacer ──
+                html += `<tr class="h-3 bg-emerald-50/50"><td colspan="6"></td></tr>`;
+            });
+
+            table.innerHTML = html + "</tbody>";
+            document.getElementById("rowCount").textContent = `${totalTxns} Transactions · ${items.length} Products`;
+            lucide.createIcons();
+        }
 
         function renderEmployeeLedger(rows) {
             const table = document.getElementById("reportTable");
@@ -1730,12 +1914,14 @@ function updateSummary(rows) {
         const totalReceived  = sum("Received");
         const totalSupplied  = sum("Supplied");
         const totalRemaining = sum("Remaining");
-        cols = 4;
+        const totalValue     = rows.reduce((s, r) => s + parseFloat(r["Total Value"] || 0), 0);
+        cols = 5;
         cards = [
             card("Products",       fmt(rows.length),     "bg-blue-50 text-blue-900",    "box"),
             card("Total Received", fmt(totalReceived),   "bg-emerald-50 text-emerald-900","arrow-down-circle"),
             card("Total Supplied", fmt(totalSupplied),   "bg-orange-50 text-orange-900","arrow-up-circle"),
-            card("Remaining Stock",fmt(totalRemaining),  "bg-violet-50 text-violet-900","layers"),
+            card("Remaining Stock",fmt(totalRemaining),  "bg-teal-50 text-teal-900",    "layers"),
+            card("Stock Value",    fmtC(totalValue),     "bg-violet-50 text-violet-900","indian-rupee"),
         ];
     }
     else if (reportAction === "getTeamLedger") {
