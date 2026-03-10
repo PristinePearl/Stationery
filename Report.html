@@ -47,6 +47,7 @@
         }
     </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 
 <body class="min-h-screen py-8 px-4 sm:px-6">
@@ -95,6 +96,7 @@
 <optgroup label="Ledgers">
     <option value="getEmployeeLedger">Employee Ledger</option>
     <option value="getProductLedger">Product Ledger</option>
+    <option value="getTeamLedger">Team Ledger</option>
 </optgroup>
                             </select>
                             <i data-lucide="layers" class="absolute left-3 top-3 w-4 h-4 text-emerald-500"></i>
@@ -132,6 +134,16 @@
   </select>
 </div>
 
+                    <!-- Filter Action Buttons -->
+                    <div class="lg:col-span-2 flex gap-2">
+                        <button onclick="applyFilters()" id="applyBtn" class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all shadow active:scale-95 text-sm">
+                            <i data-lucide="filter" class="w-4 h-4"></i> Apply
+                        </button>
+                        <button onclick="clearFilters()" id="clearBtn" class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-emerald-300 text-emerald-600 hover:bg-emerald-50 font-semibold rounded-xl transition-all active:scale-95 text-sm">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i> Clear
+                        </button>
+                    </div>
+
                     <!-- Actions -->
                     <div class="lg:col-span-4 flex gap-2">
                         <button onclick="loadReport()" id="loadBtn" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-lg active:scale-95">
@@ -149,24 +161,9 @@
   <p class="text-sm text-emerald-600">Stock movement & supply insights</p>
 </div>
 
-<!-- ===== Summary Dashboard ===== -->
-<div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 bg-white border-b border-emerald-100 hidden">
-
-  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
-    <p class="text-xs text-emerald-600 font-bold uppercase">Total Records</p>
-    <p id="sumRecords" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
-  </div>
-
-  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
-    <p class="text-xs text-emerald-600 font-bold uppercase">Total Quantity</p>
-    <p id="sumQty" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
-  </div>
-
-  <div class="bg-emerald-50 rounded-xl p-4 shadow text-center">
-    <p class="text-xs text-emerald-600 font-bold uppercase">Total Value</p>
-    <p id="sumValue" class="text-2xl font-bold text-emerald-900 mt-1">0</p>
-  </div>
-
+<!-- ===== Summary Cards ===== -->
+<div id="summaryCards" class="hidden border-b border-emerald-100">
+  <div id="summaryCardsInner" class="grid gap-4 p-5"></div>
 </div>
 <!-- ===== Charts Section ===== -->
 <div id="chartsSection" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6 hidden">
@@ -223,6 +220,226 @@
             <div class="p-4 bg-emerald-50 border-t border-emerald-100 flex justify-between items-center text-xs text-emerald-600 font-bold uppercase tracking-wider">
                 <span id="rowCount">0 Records</span>
                 <div id="filterStatus" class="italic text-emerald-500 text-right"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employee Drill-Down Modal -->
+    <div id="empDrillModal" class="hidden fixed inset-0 bg-emerald-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50 rounded-t-2xl">
+                <div>
+                    <h3 id="drillEmpName" class="text-lg font-bold text-emerald-900"></h3>
+                    <p id="drillEmpMeta" class="text-xs text-emerald-600 mt-0.5"></p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="drillTotal" class="text-sm font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg"></span>
+                    <button onclick="document.getElementById('empDrillModal').classList.add('hidden')" class="p-2 rounded-xl hover:bg-emerald-100 text-emerald-600 transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Modal Table -->
+            <div class="overflow-auto custom-scrollbar flex-1 p-4">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead class="bg-emerald-600 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-white font-bold text-xs uppercase">Date</th>
+                            <th class="px-4 py-3 text-white font-bold text-xs uppercase">Item</th>
+                            <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Qty</th>
+                            <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">MRP</th>
+                            <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="drillBody" class="divide-y divide-emerald-100"></tbody>
+                </table>
+            </div>
+            <!-- Modal Footer -->
+            <div class="px-6 py-3 border-t border-emerald-100 bg-emerald-50 rounded-b-2xl flex justify-between items-center text-xs text-emerald-600 font-bold uppercase">
+                <span id="drillRowCount"></span>
+                <button onclick="exportDrillData()" class="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs font-semibold transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Drill-Down Modal -->
+    <div id="prodDrillModal" class="hidden fixed inset-0 bg-emerald-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50 rounded-t-2xl">
+                <div>
+                    <h3 id="prodDrillName" class="text-lg font-bold text-emerald-900"></h3>
+                    <p id="prodDrillMeta" class="text-xs text-emerald-600 mt-0.5"></p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="document.getElementById('prodDrillModal').classList.add('hidden')" class="p-2 rounded-xl hover:bg-emerald-100 text-emerald-600 transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-3 gap-3 px-6 py-4 border-b border-emerald-100 bg-white">
+                <div class="bg-blue-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-blue-600 uppercase">Total Received</p>
+                    <p id="prodSumReceived" class="text-xl font-bold text-blue-900 mt-1">0</p>
+                </div>
+                <div class="bg-orange-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-orange-600 uppercase">Total Supplied</p>
+                    <p id="prodSumSupplied" class="text-xl font-bold text-orange-900 mt-1">0</p>
+                </div>
+                <div class="bg-emerald-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-emerald-600 uppercase">Remaining</p>
+                    <p id="prodSumRemaining" class="text-xl font-bold text-emerald-900 mt-1">0</p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-emerald-100 px-6 bg-white">
+                <button onclick="switchProdTab('received')" id="tabReceived" class="prod-tab px-5 py-3 text-sm font-semibold border-b-2 border-emerald-600 text-emerald-700 -mb-px transition-colors">
+                    <i data-lucide="arrow-down-circle" class="w-4 h-4 inline-block mr-1"></i> Received
+                </button>
+                <button onclick="switchProdTab('supplied')" id="tabSupplied" class="prod-tab px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-emerald-500 hover:text-emerald-700 -mb-px transition-colors">
+                    <i data-lucide="arrow-up-circle" class="w-4 h-4 inline-block mr-1"></i> Supplied
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="overflow-auto custom-scrollbar flex-1 p-4">
+                <!-- Received Table -->
+                <div id="prodTabReceived">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-blue-600 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Date</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Qty</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">MRP</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prodReceivedBody" class="divide-y divide-blue-50"></tbody>
+                    </table>
+                </div>
+                <!-- Supplied Table -->
+                <div id="prodTabSupplied" class="hidden">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-orange-500 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Date</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Code</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Name</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Qty</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">MRP</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prodSuppliedBody" class="divide-y divide-orange-50"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-emerald-100 bg-emerald-50 rounded-b-2xl flex justify-between items-center text-xs text-emerald-600 font-bold uppercase">
+                <span id="prodDrillRowCount"></span>
+                <button onclick="exportProdDrillData()" class="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs font-semibold transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Team Drill-Down Modal -->
+    <div id="teamDrillModal" class="hidden fixed inset-0 bg-emerald-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50 rounded-t-2xl">
+                <div>
+                    <h3 id="teamDrillName" class="text-lg font-bold text-emerald-900"></h3>
+                    <p id="teamDrillMeta" class="text-xs text-emerald-600 mt-0.5"></p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="teamDrillTotal" class="text-sm font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg"></span>
+                    <button onclick="document.getElementById('teamDrillModal').classList.add('hidden')" class="p-2 rounded-xl hover:bg-emerald-100 text-emerald-600 transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-4 gap-3 px-6 py-4 border-b border-emerald-100 bg-white">
+                <div class="bg-blue-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-blue-600 uppercase">Employees</p>
+                    <p id="teamDrillEmployees" class="text-xl font-bold text-blue-900 mt-1">0</p>
+                </div>
+                <div class="bg-emerald-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-emerald-600 uppercase">Transactions</p>
+                    <p id="teamDrillTxns" class="text-xl font-bold text-emerald-900 mt-1">0</p>
+                </div>
+                <div class="bg-orange-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-orange-600 uppercase">Total Qty</p>
+                    <p id="teamDrillQty" class="text-xl font-bold text-orange-900 mt-1">0</p>
+                </div>
+                <div class="bg-violet-50 rounded-xl p-3 text-center">
+                    <p class="text-xs font-bold text-violet-600 uppercase">Total Value</p>
+                    <p id="teamDrillValue" class="text-xl font-bold text-violet-900 mt-1">0</p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-emerald-100 px-6 bg-white">
+                <button onclick="switchTeamTab('byEmp')" id="teamTabByEmp" class="team-tab px-5 py-3 text-sm font-semibold border-b-2 border-emerald-600 text-emerald-700 -mb-px transition-colors">
+                    <i data-lucide="users" class="w-4 h-4 inline-block mr-1"></i> By Employee
+                </button>
+                <button onclick="switchTeamTab('transactions')" id="teamTabTxns" class="team-tab px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-emerald-500 hover:text-emerald-700 -mb-px transition-colors">
+                    <i data-lucide="list" class="w-4 h-4 inline-block mr-1"></i> All Transactions
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="overflow-auto custom-scrollbar flex-1 p-4">
+                <!-- By Employee -->
+                <div id="teamTabContentByEmp">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-emerald-600 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Code</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Name</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Transactions</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Total Qty</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Total Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teamDrillByEmpBody" class="divide-y divide-emerald-100"></tbody>
+                    </table>
+                </div>
+                <!-- All Transactions -->
+                <div id="teamTabContentTxns" class="hidden">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-emerald-600 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Date</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Code</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Emp Name</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase">Item</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Qty</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">MRP</th>
+                                <th class="px-4 py-3 text-white font-bold text-xs uppercase text-right">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teamDrillTxnBody" class="divide-y divide-emerald-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-emerald-100 bg-emerald-50 rounded-b-2xl flex justify-between items-center text-xs text-emerald-600 font-bold uppercase">
+                <span id="teamDrillRowCount"></span>
+                <button onclick="exportTeamDrillData()" class="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs font-semibold transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                </button>
             </div>
         </div>
     </div>
@@ -314,9 +531,9 @@ if (reportAction === "getInventory") {
     searchWrap.classList.add("hidden");
     document.getElementById("inventorySearch").value = "";
 }
-// Show team filter only for Supply Issuance
+// Show team filter for Supply Issuance, Team Ledger, and Employee Ledger
 const teamWrap = document.getElementById("teamFilterWrap");
-if (reportAction === "getSupplyReport") {
+if (reportAction === "getSupplyReport" || reportAction === "getTeamLedger" || reportAction === "getEmployeeLedger") {
     teamWrap.classList.remove("hidden");
 } else {
     teamWrap.classList.add("hidden");
@@ -329,31 +546,32 @@ if (reportAction === "getSupplyReport") {
             document.getElementById("loadBtn").disabled = true;
 
             try {
-                
-                // 2. Fetch main report data
-                const res = await fetch(API_URL, { 
-                    method: "POST", 
-                    body: JSON.stringify({ action: reportAction }) 
-                });
-                const data = await res.json();
 
-                if (!data.success) {
-                    showAlert("Fetch Error", data.message || "Could not retrieve data.", "error");
-                    return;
-                }
-
+                // Ledgers build themselves — skip the generic API fetch for them
+                const selfBuilt = ['getTeamLedger', 'getEmployeeLedger', 'getProductLedger'];
                 let rows = [];
 
-if (data.rows) rows = data.rows;
-else if (data.inventory) rows = data.inventory;
-else if (data.receipts) rows = data.receipts;
-else if (data.supplies) rows = data.supplies;
+                if (!selfBuilt.includes(reportAction)) {
+                    const res = await fetch(API_URL, {
+                        method: "POST",
+                        body: JSON.stringify({ action: reportAction })
+                    });
+                    const data = await res.json();
 
-else if (data.requests) rows = data.requests;
-else if (data.employees) rows = data.employees;
-else if (data.products) rows = data.products;
-else if (data.vendors) rows = data.vendors;
+                    if (!data.success) {
+                        showAlert("Fetch Error", data.message || "Could not retrieve data.", "error");
+                        return;
+                    }
 
+                    if (data.rows)      rows = data.rows;
+                    else if (data.inventory) rows = data.inventory;
+                    else if (data.receipts)  rows = data.receipts;
+                    else if (data.supplies)  rows = data.supplies;
+                    else if (data.requests)  rows = data.requests;
+                    else if (data.employees) rows = data.employees;
+                    else if (data.products)  rows = data.products;
+                    else if (data.vendors)   rows = data.vendors;
+                }
 
                 // 3. Process Rows
                 if (reportAction === "getInventory") {
@@ -417,41 +635,25 @@ teamSelect.innerHTML =
         "Team Wise": r["Team Wise"] || r["Team wise"] || r["Team"] || ""
     }));
 }
-                // DATE FILTER
-                const logActions = ['getRequestReport', 'getReceiptReport', 'getSupplyReport', 'getPendingRequests'];
-                if (logActions.includes(reportAction) && (fromDateVal || toDateVal)) {
-                    const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
-                    const end = toDateVal ? new Date(toDateVal + "T23:59:59") : null;
-
-                    rows = rows.filter(r => {
-                        const rawDate = r.Date || r.EntryDate || r.Timestamp || r.reqDate || r.DateOfEntry || r.IssueDate;
-                        if (!rawDate) return true;
-                        const rowDate = parseSheetDate(rawDate);
-                        if (!rowDate) return true;
-                        if (start && rowDate < start) return false;
-                        if (end && rowDate > end) return false;
-                        return true;
-                    });
-                }
+                // DATE FILTER — runs after row mapping so field names are normalised
+                // (moved below the report-specific mapping blocks)
 
 // ================= EMPLOYEE LEDGER =================
 if (reportAction === "getEmployeeLedger") {
 
-    // Fetch Supply Only
+    // Fetch Supply data
     const supplyRes = await fetch(API_URL, {
         method: "POST",
         body: JSON.stringify({ action: "getSupplyReport" })
     });
-
     const supplyData = await supplyRes.json();
     const supplies = supplyData.rows || [];
 
-    // Fetch Employee Directory (for Team mapping)
+    // Fetch Employee Directory
     const empRes = await fetch(API_URL, {
         method: "POST",
         body: JSON.stringify({ action: "getEmployeeList" })
     });
-
     const empData = await empRes.json();
     const empList = empData.employees || [];
 
@@ -460,31 +662,55 @@ if (reportAction === "getEmployeeLedger") {
     empSelect.innerHTML =
         `<option value="">All Employees</option>` +
         empList.map(e =>
-            `<option value="${e["Employee Code"]}">
-                ${e["Employee Name"]} (${e["Employee Code"]})
-            </option>`
+            `<option value="${e["Employee Code"]}">${e["Employee Name"]} (${e["Employee Code"]})</option>`
         ).join("");
 
-    
+    // Fill Team Dropdown
+    const teamSetEmp = new Set(empList.map(e => e["Team Wise"] || e["Team"] || "").filter(Boolean));
+    const teamSelectEmp = document.getElementById("teamFilter");
+    teamSelectEmp.innerHTML =
+        `<option value="">All Teams</option>` +
+        [...teamSetEmp].sort().map(t => `<option value="${t}">${t}</option>`).join("");
 
-    rows = supplies.map(r => {
-
+    // Build full detail rows (with MRP)
+    const detailRows = supplies.map(r => {
         const emp = empList.find(e =>
             String(e["Employee Code"]).trim() === String(r.empCode).trim()
         ) || {};
-
         return {
-            Date: r.date,
-            "Emp Code": r.empCode,
+            Date:       r.date,
+            "Emp Code": String(r.empCode || "").trim(),
             "Emp Name": r.empName,
-            Team: emp["Team Wise"] || emp["Team"] || "",
-            Item: r.item,
-            Qty: Number(r.qty || 0),
-            Value: Number(r.total || 0)
+            Team:       emp["Team Wise"] || emp["Team"] || "",
+            Item:       r.item,
+            Qty:        Number(r.qty   || 0),
+            MRP:        Number(r.mrp   || 0),
+            Value:      Number(r.total || 0)
         };
     });
 
-   
+    // Store full detail for drill-down
+    window.empLedgerDetail = detailRows;
+
+    // Build consolidated summary per employee
+    const empMap = {};
+    detailRows.forEach(r => {
+        const key = r["Emp Code"];
+        if (!empMap[key]) {
+            empMap[key] = {
+                "Emp Code": r["Emp Code"],
+                "Emp Name": r["Emp Name"],
+                Team:       r.Team,
+                Value:      0
+            };
+        }
+        empMap[key].Value += r.Value;
+    });
+
+    rows = Object.values(empMap).map(e => ({
+        ...e,
+        Value: parseFloat(e.Value.toFixed(2))
+    }));
 }
 
 // ================= PRODUCT LEDGER =================
@@ -544,6 +770,24 @@ if (reportAction === "getProductLedger") {
         productMap[item].Supplied += qty;
     });
 
+    // Store raw detail for drill-down
+    window.prodLedgerReceipts = receipts.map(r => ({
+        Date:  r.date || r.Date || "",
+        Item:  r.item || r.Item || "",
+        Qty:   Number(r.qty  || 0),
+        MRP:   Number(r.mrp  || 0),
+        Value: Number(r.qty  || 0) * Number(r.mrp || 0)
+    }));
+    window.prodLedgerSupplies = supplies.map(s => ({
+        Date:       s.date    || s.Date    || "",
+        "Emp Code": s.empCode || "",
+        "Emp Name": s.empName || "",
+        Item:       s.item    || s.Item    || "",
+        Qty:        Number(s.qty   || 0),
+        MRP:        Number(s.mrp   || 0),
+        Value:      Number(s.total || 0)
+    }));
+
     // 🔹 Final Calculation
     rows = Object.values(productMap).map(p => {
         const remaining = p.Received - p.Supplied;
@@ -566,52 +810,106 @@ if (reportAction === "getProductLedger") {
 
     
 }
-// ===== APPLY FINAL FILTERS =====
 
-// Team Filter
-if (reportAction === "getSupplyReport") {
-    const selectedTeam = document.getElementById("teamFilter").value;
-    if (selectedTeam) {
-        rows = rows.filter(r =>
-            String(r["Team Wise"] || "").trim() === selectedTeam.trim()
-        );
-    }
+// ================= TEAM LEDGER =================
+if (reportAction === "getTeamLedger") {
+
+    // Fetch Supplies
+    const supplyRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getSupplyReport" })
+    });
+    const supplyData = await supplyRes.json();
+    const supplies = supplyData.rows || [];
+
+    // Fetch Employee Directory (for Team mapping)
+    const empRes = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "getEmployeeList" })
+    });
+    const empData = await empRes.json();
+    const empList = empData.employees || [];
+
+    // Build full detail rows
+    const teamDetailRows = supplies.map(r => {
+        const emp = empList.find(e =>
+            String(e["Employee Code"]).trim() === String(r.empCode).trim()
+        ) || {};
+        return {
+            Date:       r.date,
+            Team:       emp["Team Wise"] || emp["Team"] || "Unassigned",
+            "Emp Code": String(r.empCode || "").trim(),
+            "Emp Name": r.empName,
+            Item:       r.item,
+            Qty:        Number(r.qty   || 0),
+            MRP:        Number(r.mrp   || 0),
+            Value:      Number(r.total || 0)
+        };
+    });
+
+    // Store full detail for drill-down
+    window.teamLedgerDetail = teamDetailRows;
+
+    // Fill Team dropdown (reuse teamFilter)
+    const teamSet = new Set(teamDetailRows.map(r => r.Team).filter(Boolean));
+    const teamSelect = document.getElementById("teamFilter");
+    teamSelect.innerHTML =
+        `<option value="">All Teams</option>` +
+        [...teamSet].sort().map(t => `<option value="${t}">${t}</option>`).join("");
+    document.getElementById("teamFilterWrap").classList.remove("hidden");
+
+    // Build consolidated summary per team
+    const teamMap = {};
+    teamDetailRows.forEach(r => {
+        const key = r.Team;
+        if (!teamMap[key]) {
+            teamMap[key] = { Team: key, Employees: new Set(), Transactions: 0, "Total Qty": 0, "Total Value": 0 };
+        }
+        teamMap[key].Employees.add(r["Emp Code"]);
+        teamMap[key].Transactions++;
+        teamMap[key]["Total Qty"]   += r.Qty;
+        teamMap[key]["Total Value"] += r.Value;
+    });
+
+    rows = Object.values(teamMap).map(t => ({
+        Team:            t.Team,
+        Employees:       t.Employees.size,
+        Transactions:    t.Transactions,
+        "Total Qty":     t["Total Qty"],
+        "Total Value":   parseFloat(t["Total Value"].toFixed(2))
+    }));
 }
 
-// Employee Ledger Filter
-if (reportAction === "getEmployeeLedger") {
-    const selectedEmp = document.getElementById("employeeFilter").value;
-    if (selectedEmp) {
-        rows = rows.filter(r => r["Emp Code"] === selectedEmp);
-    }
-}
+// ===== DATE FILTER (runs after all row-mapping so field names are normalised) =====
+                const logActions = ['getRequestReport', 'getReceiptReport', 'getSupplyReport', 'getPendingRequests', 'getEmployeeLedger'];
+                if (logActions.includes(reportAction) && (fromDateVal || toDateVal)) {
+                    const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
+                    const end   = toDateVal   ? new Date(toDateVal   + "T23:59:59") : null;
+                    rows = rows.filter(r => {
+                        const rawDate = r.Date || r.EntryDate || r.Timestamp || r.reqDate || r.DateOfEntry || r.IssueDate;
+                        if (!rawDate) return true;
+                        const rowDate = parseSheetDate(rawDate);
+                        if (!rowDate) return true;
+                        if (start && rowDate < start) return false;
+                        if (end   && rowDate > end)   return false;
+                        return true;
+                    });
+                }
 
-// Product Ledger Filter
-if (reportAction === "getProductLedger") {
-    const selectedItem = document.getElementById("productFilter").value;
-    if (selectedItem) {
-        rows = rows.filter(r => r.Item === selectedItem);
-    }
-}
-
+// ===== STORE & RENDER =====
                 masterData = rows;   // store original full data
-applyFilters();      // apply live filters
-                renderTable(currentData);
+                applyFilters();      // applies all live filters → sets currentData → calls renderTable
 
 // Show dashboard ONLY for Supply Issuance
 if (reportAction === "getSupplyReport" && currentData.length) {
-
     document.getElementById("dashboardHeader").classList.remove("hidden");
-
-    updateSummary(currentData);
     drawCharts(currentData, reportAction);
-
 } else {
-
     document.getElementById("dashboardHeader").classList.add("hidden");
-    document.getElementById("summaryCards").classList.add("hidden");
     document.getElementById("chartsSection").classList.add("hidden");
 }
+// Summary cards for ALL reports
+if (currentData.length) updateSummary(currentData);
                 document.getElementById("rowCount").textContent = `${currentData.length} Records`;
                 document.getElementById("filterStatus").textContent = (fromDateVal || toDateVal) ? `Filtered: ${fromDateVal} to ${toDateVal}` : "Full Dataset";
                 showMessage("Report Loaded");
@@ -626,6 +924,7 @@ if (reportAction === "getSupplyReport" && currentData.length) {
         }
 
         function renderTable(rows) {
+            const reportAction = document.getElementById("reportType").value;
             const table = document.getElementById("reportTable");
             table.innerHTML = "";
             if (!rows.length) {
@@ -633,19 +932,22 @@ if (reportAction === "getSupplyReport" && currentData.length) {
                 return;
             }
 
+            const isProductLedger = reportAction === "getProductLedger";
+
             // FILTER: Hide specific system or unwanted columns
             const headers = Object.keys(rows[0]).filter(h => {
                 const low = h.toLowerCase();
-                // "division" and "category" are hidden from UI
                 return !['success', 'message', 'id', 'division', 'category'].includes(low);
             });
             
             let html = `<thead class="bg-emerald-600 sticky top-0 z-20"><tr>`;
             headers.forEach(h => html += `<th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 last:border-0">${h}</th>`);
+            if (isProductLedger) html += `<th class="px-4 py-4 text-white font-bold text-xs uppercase text-center">Details</th>`;
             html += `</tr></thead><tbody class="divide-y divide-emerald-100">`;
 
             rows.forEach((r, idx) => {
-                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'} hover:bg-emerald-100/50 transition-colors">`;
+                const clickAttr = isProductLedger ? `onclick="openProdDrill('${String(r.Item).replace(/'/g, "\\'")}')" style="cursor:pointer"` : "";
+                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'} hover:bg-emerald-100/50 transition-colors" ${clickAttr}>`;
                 headers.forEach(h => {
                     let val = r[h] ?? "";
                     const lowerH = h.toLowerCase();
@@ -654,15 +956,41 @@ if (reportAction === "getSupplyReport" && currentData.length) {
                     }
                     html += `<td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap">${val}</td>`;
                 });
+                if (isProductLedger) {
+                    html += `<td class="px-4 py-3.5 text-center">
+                        <span class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-semibold">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i> View
+                        </span>
+                    </td>`;
+                }
                 html += `</tr>`;
             });
             table.innerHTML = html + "</tbody>";
+            lucide.createIcons();
         }
 
 function applyFilters() {
 
     const reportAction = document.getElementById("reportType").value;
     let rows = [...masterData];
+
+    // ===== DATE FILTER (live – re-applied on every filter change) =====
+    const fromDateVal = document.getElementById("dateFrom").value;
+    const toDateVal   = document.getElementById("dateTo").value;
+    const logActions  = ['getRequestReport', 'getReceiptReport', 'getSupplyReport', 'getPendingRequests'];
+    if (logActions.includes(reportAction) && (fromDateVal || toDateVal)) {
+        const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
+        const end   = toDateVal   ? new Date(toDateVal   + "T23:59:59") : null;
+        rows = rows.filter(r => {
+            const rawDate = r.Date || r.EntryDate || r.Timestamp || r.reqDate || r.DateOfEntry || r.IssueDate;
+            if (!rawDate) return true;
+            const rowDate = parseSheetDate(rawDate);
+            if (!rowDate) return true;
+            if (start && rowDate < start) return false;
+            if (end   && rowDate > end)   return false;
+            return true;
+        });
+    }
 
     // Team Filter
     if (reportAction === "getSupplyReport") {
@@ -674,12 +1002,55 @@ function applyFilters() {
         }
     }
 
-    // Employee Ledger Filter
+    // Employee Ledger — filter detail store, then re-consolidate
     if (reportAction === "getEmployeeLedger") {
-        const selectedEmp = document.getElementById("employeeFilter").value;
-        if (selectedEmp) {
-            rows = rows.filter(r => r["Emp Code"] === selectedEmp);
+        const selectedEmp  = document.getElementById("employeeFilter").value;
+        const selectedTeam = document.getElementById("teamFilter").value;
+        let detail = [...(window.empLedgerDetail || [])];
+
+        // Date filter on detail
+        if (fromDateVal || toDateVal) {
+            const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
+            const end   = toDateVal   ? new Date(toDateVal   + "T23:59:59") : null;
+            detail = detail.filter(r => {
+                const rowDate = parseSheetDate(r.Date);
+                if (!rowDate) return true;
+                if (start && rowDate < start) return false;
+                if (end   && rowDate > end)   return false;
+                return true;
+            });
         }
+
+        // Team filter on detail
+        if (selectedTeam) {
+            detail = detail.filter(r => r.Team === selectedTeam);
+        }
+
+        // Employee filter on detail
+        if (selectedEmp) {
+            detail = detail.filter(r => String(r["Emp Code"]).trim() === String(selectedEmp).trim());
+        }
+
+        // Re-consolidate from filtered detail
+        const empMap = {};
+        detail.forEach(r => {
+            const key = r["Emp Code"];
+            if (!empMap[key]) {
+                empMap[key] = { "Emp Code": r["Emp Code"], "Emp Name": r["Emp Name"], Team: r.Team, Value: 0 };
+            }
+            empMap[key].Value += r.Value;
+        });
+
+        rows = Object.values(empMap).map(e => ({ ...e, Value: parseFloat(e.Value.toFixed(2)) }));
+
+        // Store filtered detail for drill-down
+        window.empLedgerFiltered = detail;
+
+        currentData = rows;
+        renderEmployeeLedger(rows);
+        document.getElementById("rowCount").textContent = `${rows.length} Employees`;
+        if (rows.length) updateSummary(rows);
+        return;
     }
 
     // Product Ledger Filter
@@ -690,68 +1061,713 @@ function applyFilters() {
         }
     }
 
+    // Team Ledger — filter detail store, then re-consolidate
+    if (reportAction === "getTeamLedger") {
+        const selectedTeam = document.getElementById("teamFilter").value;
+        let detail = [...(window.teamLedgerDetail || [])];
+
+        // Date filter on detail
+        if (fromDateVal || toDateVal) {
+            const start = fromDateVal ? new Date(fromDateVal + "T00:00:00") : null;
+            const end   = toDateVal   ? new Date(toDateVal   + "T23:59:59") : null;
+            detail = detail.filter(r => {
+                const rowDate = parseSheetDate(r.Date);
+                if (!rowDate) return true;
+                if (start && rowDate < start) return false;
+                if (end   && rowDate > end)   return false;
+                return true;
+            });
+        }
+
+        if (selectedTeam) {
+            detail = detail.filter(r => r.Team === selectedTeam);
+        }
+
+        // Re-consolidate
+        const teamMap = {};
+        detail.forEach(r => {
+            const key = r.Team;
+            if (!teamMap[key]) {
+                teamMap[key] = { Team: key, Employees: new Set(), Transactions: 0, "Total Qty": 0, "Total Value": 0 };
+            }
+            teamMap[key].Employees.add(r["Emp Code"]);
+            teamMap[key].Transactions++;
+            teamMap[key]["Total Qty"]   += r.Qty;
+            teamMap[key]["Total Value"] += r.Value;
+        });
+
+        rows = Object.values(teamMap).map(t => ({
+            Team:          t.Team,
+            Employees:     t.Employees.size,
+            Transactions:  t.Transactions,
+            "Total Qty":   t["Total Qty"],
+            "Total Value": parseFloat(t["Total Value"].toFixed(2))
+        }));
+
+        window.teamLedgerFiltered = detail;
+
+        currentData = rows;
+        renderTeamLedger(rows);
+        document.getElementById("rowCount").textContent = `${rows.length} Teams`;
+        if (rows.length) updateSummary(rows);
+        return;
+    }
+
     currentData = rows;
     renderTable(currentData);
     document.getElementById("rowCount").textContent = `${currentData.length} Records`;
+    if (currentData.length) updateSummary(currentData);
 }
+
+        function renderEmployeeLedger(rows) {
+            const table = document.getElementById("reportTable");
+            table.innerHTML = "";
+            if (!rows.length) {
+                table.innerHTML = `<tr><td class="py-24 text-center text-emerald-400">No records found for the selection.</td></tr>`;
+                return;
+            }
+            let html = `<thead class="bg-emerald-600 sticky top-0 z-20"><tr>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Emp Code</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Emp Name</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Team</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase text-right">Value</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase text-center">Details</th>
+            </tr></thead><tbody class="divide-y divide-emerald-100">`;
+            rows.forEach((r, idx) => {
+                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'} hover:bg-emerald-100/50 transition-colors cursor-pointer" onclick="openEmpDrill('${String(r["Emp Code"]).replace(/'/g,"\\'")}')">
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap font-medium">${r["Emp Code"]}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap">${r["Emp Name"]}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap">${r.Team}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap text-right font-semibold">${r.Value.toFixed(2)}</td>
+                    <td class="px-4 py-3.5 text-center">
+                        <span class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-semibold">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i> View
+                        </span>
+                    </td>
+                </tr>`;
+            });
+            table.innerHTML = html + "</tbody>";
+            lucide.createIcons();
+        }
+
+        function renderTeamLedger(rows) {
+            const table = document.getElementById("reportTable");
+            table.innerHTML = "";
+            if (!rows.length) {
+                table.innerHTML = `<tr><td class="py-24 text-center text-emerald-400">No records found for the selection.</td></tr>`;
+                return;
+            }
+            let html = `<thead class="bg-emerald-600 sticky top-0 z-20"><tr>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500">Team</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 text-right">Employees</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 text-right">Transactions</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase border-r border-emerald-500 text-right">Total Qty</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase text-right">Total Value</th>
+                <th class="px-4 py-4 text-white font-bold text-xs uppercase text-center">Details</th>
+            </tr></thead><tbody class="divide-y divide-emerald-100">`;
+            rows.forEach((r, idx) => {
+                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'} hover:bg-emerald-100/50 transition-colors cursor-pointer" onclick="openTeamDrill('${String(r.Team).replace(/'/g,"\\'")}')">
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap font-semibold">${r.Team}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap text-right">${r.Employees}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap text-right">${r.Transactions}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap text-right">${r["Total Qty"]}</td>
+                    <td class="px-4 py-3.5 text-sm text-emerald-950 whitespace-nowrap text-right font-semibold">₹${r["Total Value"].toFixed(2)}</td>
+                    <td class="px-4 py-3.5 text-center">
+                        <span class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-semibold">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i> View
+                        </span>
+                    </td>
+                </tr>`;
+            });
+            table.innerHTML = html + "</tbody>";
+            lucide.createIcons();
+        }
+
+        let currentTeamDrillRows = [];
+        let currentTeamName = "";
+
+        function openTeamDrill(teamName) {
+            const detail = (window.teamLedgerFiltered || window.teamLedgerDetail || [])
+                .filter(r => r.Team === teamName);
+            if (!detail.length) return;
+
+            currentTeamDrillRows = detail;
+            currentTeamName = teamName;
+
+            const empSet   = new Set(detail.map(r => r["Emp Code"]));
+            const totalQty = detail.reduce((s, r) => s + r.Qty,   0);
+            const totalVal = detail.reduce((s, r) => s + r.Value, 0);
+
+            document.getElementById("teamDrillName").textContent  = teamName;
+            document.getElementById("teamDrillMeta").textContent  = `${empSet.size} employees · ${detail.length} transactions`;
+            document.getElementById("teamDrillTotal").textContent  = `₹${totalVal.toFixed(2)}`;
+            document.getElementById("teamDrillEmployees").textContent = empSet.size;
+            document.getElementById("teamDrillTxns").textContent      = detail.length;
+            document.getElementById("teamDrillQty").textContent       = totalQty;
+            document.getElementById("teamDrillValue").textContent     = `₹${totalVal.toFixed(2)}`;
+            document.getElementById("teamDrillRowCount").textContent  = `${detail.length} transactions`;
+
+            // By-Employee tab
+            const empMap = {};
+            detail.forEach(r => {
+                const k = r["Emp Code"];
+                if (!empMap[k]) empMap[k] = { "Emp Code": k, "Emp Name": r["Emp Name"], Transactions: 0, "Total Qty": 0, "Total Value": 0 };
+                empMap[k].Transactions++;
+                empMap[k]["Total Qty"]   += r.Qty;
+                empMap[k]["Total Value"] += r.Value;
+            });
+            let empHtml = "";
+            Object.values(empMap).forEach((e, idx) => {
+                empHtml += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'}">
+                    <td class="px-4 py-3 font-medium whitespace-nowrap">${e["Emp Code"]}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${e["Emp Name"]}</td>
+                    <td class="px-4 py-3 text-right">${e.Transactions}</td>
+                    <td class="px-4 py-3 text-right">${e["Total Qty"]}</td>
+                    <td class="px-4 py-3 text-right font-semibold">₹${e["Total Value"].toFixed(2)}</td>
+                </tr>`;
+            });
+            document.getElementById("teamDrillByEmpBody").innerHTML = empHtml || `<tr><td colspan="5" class="py-8 text-center text-gray-400">No data</td></tr>`;
+
+            // Transactions tab
+            let txnHtml = "";
+            detail.forEach((r, idx) => {
+                txnHtml += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'}">
+                    <td class="px-4 py-3 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${r["Emp Code"]}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">${r["Emp Name"]}</td>
+                    <td class="px-4 py-3">${r.Item}</td>
+                    <td class="px-4 py-3 text-right">${r.Qty}</td>
+                    <td class="px-4 py-3 text-right">₹${r.MRP}</td>
+                    <td class="px-4 py-3 text-right font-semibold">₹${r.Value.toFixed(2)}</td>
+                </tr>`;
+            });
+            document.getElementById("teamDrillTxnBody").innerHTML = txnHtml || `<tr><td colspan="7" class="py-8 text-center text-gray-400">No data</td></tr>`;
+
+            switchTeamTab("byEmp");
+            document.getElementById("teamDrillModal").classList.remove("hidden");
+            lucide.createIcons();
+        }
+
+        function switchTeamTab(tab) {
+            document.getElementById("teamTabContentByEmp").classList.toggle("hidden", tab !== "byEmp");
+            document.getElementById("teamTabContentTxns").classList.toggle("hidden", tab !== "transactions");
+            const active   = "team-tab px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors border-emerald-600 text-emerald-700";
+            const inactive = "team-tab px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors border-transparent text-emerald-500 hover:text-emerald-700";
+            document.getElementById("teamTabByEmp").className = tab === "byEmp"         ? active : inactive;
+            document.getElementById("teamTabTxns").className  = tab === "transactions"  ? active : inactive;
+        }
+
+        function exportTeamDrillData() {
+            if (!currentTeamDrillRows.length) return;
+            const wb = XLSX.utils.book_new();
+
+            // Employee summary sheet
+            const empMap = {};
+            currentTeamDrillRows.forEach(r => {
+                const k = r["Emp Code"];
+                if (!empMap[k]) empMap[k] = { "Emp Code": k, "Emp Name": r["Emp Name"], Team: r.Team, Transactions: 0, "Total Qty": 0, "Total Value": 0 };
+                empMap[k].Transactions++;
+                empMap[k]["Total Qty"]   += r.Qty;
+                empMap[k]["Total Value"] += r.Value;
+            });
+            const empData = Object.values(empMap).map(e => ({ ...e, "Total Value": parseFloat(e["Total Value"].toFixed(2)) }));
+            const wsEmp = XLSX.utils.json_to_sheet(empData);
+            styleHeaderRow(wsEmp, empData[0]);
+            XLSX.utils.book_append_sheet(wb, wsEmp, "By Employee");
+
+            // Transactions sheet
+            const txnData = currentTeamDrillRows.map(r => ({
+                "Date":      formatDateForDisplay(r.Date),
+                "Emp Code":  r["Emp Code"],
+                "Emp Name":  r["Emp Name"],
+                "Item":      r.Item,
+                "Qty":       r.Qty,
+                "MRP":       r.MRP,
+                "Value":     parseFloat(r.Value.toFixed(2))
+            }));
+            const wsTxn = XLSX.utils.json_to_sheet(txnData);
+            styleHeaderRow(wsTxn, txnData[0]);
+            XLSX.utils.book_append_sheet(wb, wsTxn, "Transactions");
+
+            XLSX.writeFile(wb, `Team_Ledger_${currentTeamName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        let currentDrillRows = [];
+
+        function openEmpDrill(empCode) {
+            const detail = (window.empLedgerFiltered || window.empLedgerDetail || [])
+                .filter(r => String(r["Emp Code"]).trim() === String(empCode).trim());
+
+            if (!detail.length) return;
+
+            currentDrillRows = detail;
+
+            const emp = detail[0];
+            document.getElementById("drillEmpName").textContent = `${emp["Emp Name"]} (${emp["Emp Code"]})`;
+            document.getElementById("drillEmpMeta").textContent = `Team: ${emp.Team || "—"}`;
+
+            const totalVal = detail.reduce((s, r) => s + r.Value, 0);
+            document.getElementById("drillTotal").textContent = `Total: ₹${totalVal.toFixed(2)}`;
+            document.getElementById("drillRowCount").textContent = `${detail.length} transactions`;
+
+            let html = "";
+            detail.forEach((r, idx) => {
+                html += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-emerald-50/20'}">
+                    <td class="px-4 py-3 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                    <td class="px-4 py-3">${r.Item}</td>
+                    <td class="px-4 py-3 text-right">${r.Qty}</td>
+                    <td class="px-4 py-3 text-right">${r.MRP}</td>
+                    <td class="px-4 py-3 text-right font-semibold">${r.Value.toFixed(2)}</td>
+                </tr>`;
+            });
+            document.getElementById("drillBody").innerHTML = html;
+            document.getElementById("empDrillModal").classList.remove("hidden");
+            lucide.createIcons();
+        }
+
+        function exportDrillData() {
+            if (!currentDrillRows.length) return;
+            const wb = XLSX.utils.book_new();
+            const data = currentDrillRows.map(r => ({
+                "Date":  formatDateForDisplay(r.Date),
+                "Item":  r.Item,
+                "Qty":   r.Qty,
+                "MRP":   r.MRP,
+                "Value": parseFloat(r.Value.toFixed(2))
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            styleHeaderRow(ws, data[0]);
+            XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+            XLSX.writeFile(wb, `Employee_Ledger_${currentDrillRows[0]["Emp Code"]}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // ===== PRODUCT LEDGER DRILL-DOWN =====
+        let currentProdItem = "";
+
+        function openProdDrill(itemName) {
+            const receipts = (window.prodLedgerReceipts || []).filter(r => r.Item === itemName);
+            const supplies  = (window.prodLedgerSupplies  || []).filter(r => r.Item === itemName);
+
+            if (!receipts.length && !supplies.length) return;
+
+            currentProdItem = itemName;
+
+            const totalReceived  = receipts.reduce((s, r) => s + r.Qty, 0);
+            const totalSupplied  = supplies.reduce((s, r) => s + r.Qty, 0);
+            const totalRemaining = totalReceived - totalSupplied;
+            const mrp = receipts.length ? receipts[receipts.length - 1].MRP : 0;
+
+            document.getElementById("prodDrillName").textContent = itemName;
+            document.getElementById("prodDrillMeta").textContent = `MRP: ₹${mrp}  ·  Remaining Value: ₹${(totalRemaining * mrp).toFixed(2)}`;
+            document.getElementById("prodSumReceived").textContent  = totalReceived;
+            document.getElementById("prodSumSupplied").textContent  = totalSupplied;
+            document.getElementById("prodSumRemaining").textContent = totalRemaining;
+            document.getElementById("prodDrillRowCount").textContent = `${receipts.length} receipts · ${supplies.length} issues`;
+
+            // Received rows
+            let recHtml = "";
+            receipts.forEach((r, idx) => {
+                recHtml += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-blue-50/40'}">
+                    <td class="px-4 py-3 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                    <td class="px-4 py-3 text-right">${r.Qty}</td>
+                    <td class="px-4 py-3 text-right">₹${r.MRP}</td>
+                    <td class="px-4 py-3 text-right font-semibold">₹${r.Value.toFixed(2)}</td>
+                </tr>`;
+            });
+            if (!recHtml) recHtml = `<tr><td colspan="4" class="py-8 text-center text-gray-400">No receipts found</td></tr>`;
+            document.getElementById("prodReceivedBody").innerHTML = recHtml;
+
+            // Supplied rows
+            let supHtml = "";
+            supplies.forEach((r, idx) => {
+                supHtml += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/40'}">
+                    <td class="px-4 py-3 whitespace-nowrap">${formatDateForDisplay(r.Date)}</td>
+                    <td class="px-4 py-3">${r["Emp Code"]}</td>
+                    <td class="px-4 py-3">${r["Emp Name"]}</td>
+                    <td class="px-4 py-3 text-right">${r.Qty}</td>
+                    <td class="px-4 py-3 text-right">₹${r.MRP}</td>
+                    <td class="px-4 py-3 text-right font-semibold">₹${r.Value.toFixed(2)}</td>
+                </tr>`;
+            });
+            if (!supHtml) supHtml = `<tr><td colspan="6" class="py-8 text-center text-gray-400">No supply records found</td></tr>`;
+            document.getElementById("prodSuppliedBody").innerHTML = supHtml;
+
+            switchProdTab("received");
+            document.getElementById("prodDrillModal").classList.remove("hidden");
+            lucide.createIcons();
+        }
+
+        function switchProdTab(tab) {
+            document.getElementById("prodTabReceived").classList.toggle("hidden", tab !== "received");
+            document.getElementById("prodTabSupplied").classList.toggle("hidden", tab !== "supplied");
+            document.getElementById("tabReceived").className =
+                "prod-tab px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors " +
+                (tab === "received" ? "border-emerald-600 text-emerald-700" : "border-transparent text-emerald-500 hover:text-emerald-700");
+            document.getElementById("tabSupplied").className =
+                "prod-tab px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors " +
+                (tab === "supplied" ? "border-emerald-600 text-emerald-700" : "border-transparent text-emerald-500 hover:text-emerald-700");
+        }
+
+        function exportProdDrillData() {
+            const receipts = (window.prodLedgerReceipts || []).filter(r => r.Item === currentProdItem);
+            const supplies  = (window.prodLedgerSupplies  || []).filter(r => r.Item === currentProdItem);
+            if (!receipts.length && !supplies.length) return;
+
+            const wb = XLSX.utils.book_new();
+
+            if (receipts.length) {
+                const recData = receipts.map(r => ({
+                    "Date":  formatDateForDisplay(r.Date),
+                    "Qty":   r.Qty,
+                    "MRP":   r.MRP,
+                    "Value": parseFloat(r.Value.toFixed(2))
+                }));
+                const wsRec = XLSX.utils.json_to_sheet(recData);
+                styleHeaderRow(wsRec, recData[0]);
+                XLSX.utils.book_append_sheet(wb, wsRec, "Received");
+            }
+
+            if (supplies.length) {
+                const supData = supplies.map(r => ({
+                    "Date":      formatDateForDisplay(r.Date),
+                    "Emp Code":  r["Emp Code"],
+                    "Emp Name":  r["Emp Name"],
+                    "Qty":       r.Qty,
+                    "MRP":       r.MRP,
+                    "Value":     parseFloat(r.Value.toFixed(2))
+                }));
+                const wsSup = XLSX.utils.json_to_sheet(supData);
+                styleHeaderRow(wsSup, supData[0]);
+                XLSX.utils.book_append_sheet(wb, wsSup, "Supplied");
+            }
+
+            XLSX.writeFile(wb, `Product_Ledger_${currentProdItem}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
 
         function downloadExcel() {
-
     const reportAction = document.getElementById("reportType").value;
+    const dateLabel = (() => {
+        const f = document.getElementById("dateFrom").value;
+        const t = document.getElementById("dateTo").value;
+        return (f || t) ? `_${f||""}to${t||""}` : "";
+    })();
 
-// Clear previous inventory filter when switching report
-if (reportAction !== "getInventory") {
-    window.filteredInventory = null;
-}
+    const reportNames = {
+        getInventory:      "Inventory_Stock",
+        getRequestReport:  "Request_Log",
+        getReceiptReport:  "Purchase_Receipts",
+        getSupplyReport:   "Supply_Issuance",
+        getProducts:       "Product_Master",
+        getEmployeeList:   "Employee_Directory",
+        getVendors:        "Vendor_Directory",
+        getEmployeeLedger: "Employee_Ledger",
+        getProductLedger:  "Product_Ledger"
+    };
+    const fileName = `${reportNames[reportAction] || "Report"}${dateLabel}_${new Date().toISOString().slice(0,10)}.xlsx`;
 
-let exportData = currentData;
+    const wb = XLSX.utils.book_new();
 
-// Use filtered set ONLY for Current Inventory
-if (reportAction === "getInventory" && window.filteredInventory?.length) {
-    exportData = window.filteredInventory;
-}
+    // ── EMPLOYEE LEDGER: export full detail rows, not consolidated ──
+    if (reportAction === "getEmployeeLedger") {
+        const detail = window.empLedgerFiltered || window.empLedgerDetail || [];
+        if (!detail.length) return showAlert("Notice", "Nothing to export", "info");
 
-    if (!exportData.length) {
-        return showAlert("Notice", "Nothing to export", "info");
+        // Summary sheet
+        const summaryData = currentData.map(r => ({
+            "Emp Code": r["Emp Code"],
+            "Emp Name": r["Emp Name"],
+            "Team":     r.Team,
+            "Total Value": r.Value
+        }));
+        const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+        styleHeaderRow(wsSummary, summaryData[0]);
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+        // Detail sheet
+        const detailData = detail.map(r => ({
+            "Emp Code": r["Emp Code"],
+            "Emp Name": r["Emp Name"],
+            "Team":     r.Team,
+            "Date":     formatDateForDisplay(r.Date),
+            "Item":     r.Item,
+            "Qty":      r.Qty,
+            "MRP":      r.MRP,
+            "Value":    r.Value
+        }));
+        const wsDetail = XLSX.utils.json_to_sheet(detailData);
+        styleHeaderRow(wsDetail, detailData[0]);
+        XLSX.utils.book_append_sheet(wb, wsDetail, "Transactions");
+        XLSX.writeFile(wb, fileName);
+        return;
     }
 
-    let table = "<table border='1'><tr>";
-            const headers = Object.keys(exportData[0]).filter(h => {
-                const low = h.toLowerCase();
-                return !['success', 'message', 'division', 'category'].includes(low);
-            });
-            headers.forEach(h => table += `<th style='background:#059669;color:white'>${h}</th>`);
-            table += "</tr>";
-            exportData.forEach(r => {
-                table += "<tr>";
-                headers.forEach(h => {
-                    let v = r[h] ?? "";
-                    if (h.toLowerCase().includes('date') || h.toLowerCase().includes('timestamp')) v = formatDateForDisplay(v);
-                    table += `<td>${v}</td>`;
-                });
-                table += "</tr>";
-            });
-            const blob = new Blob([table + "</table>"], { type: "application/vnd.ms-excel" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `Inventory_Report_${new Date().toISOString().slice(0,10)}.xls`;
-            a.click();
-            URL.revokeObjectURL(a.href);
+    // ── PRODUCT LEDGER: Summary + Received + Supplied sheets ──
+    if (reportAction === "getProductLedger") {
+        if (!currentData.length) return showAlert("Notice", "Nothing to export", "info");
+
+        const wsSummary = XLSX.utils.json_to_sheet(currentData);
+        styleHeaderRow(wsSummary, currentData[0]);
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+        const receipts = (window.prodLedgerReceipts || []).map(r => ({
+            "Item":  r.Item,
+            "Date":  formatDateForDisplay(r.Date),
+            "Qty":   r.Qty,
+            "MRP":   r.MRP,
+            "Value": parseFloat(r.Value.toFixed(2))
+        }));
+        if (receipts.length) {
+            const wsRec = XLSX.utils.json_to_sheet(receipts);
+            styleHeaderRow(wsRec, receipts[0]);
+            XLSX.utils.book_append_sheet(wb, wsRec, "Received");
         }
-function updateSummary(rows) {
-    document.getElementById("summaryCards").classList.remove("hidden");
 
-    let totalQty = 0;
-    let totalVal = 0;
+        const supplies = (window.prodLedgerSupplies || []).map(r => ({
+            "Item":      r.Item,
+            "Date":      formatDateForDisplay(r.Date),
+            "Emp Code":  r["Emp Code"],
+            "Emp Name":  r["Emp Name"],
+            "Qty":       r.Qty,
+            "MRP":       r.MRP,
+            "Value":     parseFloat(r.Value.toFixed(2))
+        }));
+        if (supplies.length) {
+            const wsSup = XLSX.utils.json_to_sheet(supplies);
+            styleHeaderRow(wsSup, supplies[0]);
+            XLSX.utils.book_append_sheet(wb, wsSup, "Supplied");
+        }
 
-    rows.forEach(r => {
-        totalQty += Number(r.Qty || r.Quantity || 0);
-        totalVal += Number(r.Total || r.Value || 0);
+        XLSX.writeFile(wb, fileName);
+        return;
+    }
+
+    // ── TEAM LEDGER: Summary + Transactions sheets ──
+    if (reportAction === "getTeamLedger") {
+        if (!currentData.length) return showAlert("Notice", "Nothing to export", "info");
+
+        const wsSummary = XLSX.utils.json_to_sheet(currentData);
+        styleHeaderRow(wsSummary, currentData[0]);
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Team Summary");
+
+        const detail = window.teamLedgerFiltered || window.teamLedgerDetail || [];
+        if (detail.length) {
+            const txnData = detail.map(r => ({
+                "Team":      r.Team,
+                "Date":      formatDateForDisplay(r.Date),
+                "Emp Code":  r["Emp Code"],
+                "Emp Name":  r["Emp Name"],
+                "Item":      r.Item,
+                "Qty":       r.Qty,
+                "MRP":       r.MRP,
+                "Value":     parseFloat(r.Value.toFixed(2))
+            }));
+            const wsTxn = XLSX.utils.json_to_sheet(txnData);
+            styleHeaderRow(wsTxn, txnData[0]);
+            XLSX.utils.book_append_sheet(wb, wsTxn, "Transactions");
+        }
+
+        XLSX.writeFile(wb, fileName);
+        return;
+    }
+
+    // ── ALL OTHER REPORTS ──
+    let exportData = currentData;
+    if (reportAction === "getInventory" && window.filteredInventory?.length) {
+        exportData = window.filteredInventory;
+    }
+    if (!exportData.length) return showAlert("Notice", "Nothing to export", "info");
+
+    const cleanData = exportData.map(r => {
+        const row = {};
+        Object.keys(r).forEach(h => {
+            if (['success','message','division','category'].includes(h.toLowerCase())) return;
+            let v = r[h] ?? "";
+            if (h.toLowerCase().includes('date') || h.toLowerCase().includes('timestamp')) v = formatDateForDisplay(v);
+            row[h] = v;
+        });
+        return row;
     });
 
-    document.getElementById("sumRecords").textContent = rows.length;
-    document.getElementById("sumQty").textContent = totalQty;
-    document.getElementById("sumValue").textContent = totalVal.toFixed(2);
+    const ws = XLSX.utils.json_to_sheet(cleanData);
+    styleHeaderRow(ws, cleanData[0]);
+    XLSX.utils.book_append_sheet(wb, ws, "Report");
+    XLSX.writeFile(wb, fileName);
+}
+
+// Helper: bold + green background on header row
+function styleHeaderRow(ws, sampleRow) {
+    if (!sampleRow) return;
+    const cols = Object.keys(sampleRow).length;
+    for (let c = 0; c < cols; c++) {
+        const cellRef = XLSX.utils.encode_cell({ r: 0, c });
+        if (!ws[cellRef]) continue;
+        ws[cellRef].s = {
+            font:      { bold: true, color: { rgb: "FFFFFF" } },
+            fill:      { fgColor: { rgb: "059669" } },
+            alignment: { horizontal: "center" }
+        };
+    }
+    // Auto column widths
+    const colWidths = Object.keys(sampleRow).map(k => ({ wch: Math.max(k.length + 2, 12) }));
+    ws["!cols"] = colWidths;
+}
+function updateSummary(rows) {
+    const reportAction = document.getElementById("reportType").value;
+    const wrap  = document.getElementById("summaryCards");
+    const inner = document.getElementById("summaryCardsInner");
+
+    if (!rows.length) { wrap.classList.add("hidden"); return; }
+
+    const card = (label, value, colorClass, icon) =>
+        `<div class="rounded-xl p-4 shadow-sm text-center ${colorClass}">
+            <p class="text-xs font-bold uppercase tracking-wide opacity-70 flex items-center justify-center gap-1">
+                <i data-lucide="${icon}" class="w-3.5 h-3.5"></i>${label}
+            </p>
+            <p class="text-2xl font-bold mt-1">${value}</p>
+        </div>`;
+
+    const fmt  = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    const fmtC = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sum  = (key) => rows.reduce((s, r) => s + Number(r[key] || 0), 0);
+
+    let cards = [];
+    let cols  = 4;
+
+    if (reportAction === "getInventory") {
+        const totalItems  = rows.length;
+        const totalStock  = sum("CurrentStock") || sum("Balance") || sum("Qty");
+        const lowStock    = rows.filter(r => { const q = Number(r.CurrentStock || r.Balance || r.Qty || 0); return q > 0 && q <= 10; }).length;
+        const totalValue  = rows.reduce((s, r) => {
+            const qty = Number(r.CurrentStock || r.Balance || r.Qty || 0);
+            const mrp = Number(r.MRP || r.Price || 0);
+            return s + qty * mrp;
+        }, 0);
+        cols = 4;
+        cards = [
+            card("Total Items",    fmt(totalItems),  "bg-blue-50 text-blue-900",    "package"),
+            card("Total Stock",    fmt(totalStock),  "bg-emerald-50 text-emerald-900", "layers"),
+            card("Low Stock Items",fmt(lowStock),    "bg-red-50 text-red-900",      "alert-triangle"),
+            card("Stock Value",    fmtC(totalValue), "bg-violet-50 text-violet-900","indian-rupee"),
+        ];
+    }
+    else if (reportAction === "getRequestReport") {
+        const totalQty   = sum("Qty") || sum("Quantity");
+        const pending    = rows.filter(r => String(r.Status || "").toLowerCase().includes("pend")).length;
+        const approved   = rows.filter(r => String(r.Status || "").toLowerCase().includes("approv")).length;
+        cols = 4;
+        cards = [
+            card("Total Requests", fmt(rows.length),  "bg-blue-50 text-blue-900",    "clipboard-list"),
+            card("Total Qty",      fmt(totalQty),     "bg-emerald-50 text-emerald-900","layers"),
+            card("Pending",        fmt(pending),      "bg-yellow-50 text-yellow-900","clock"),
+            card("Approved",       fmt(approved),     "bg-green-50 text-green-900",  "check-circle"),
+        ];
+    }
+    else if (reportAction === "getReceiptReport") {
+        const totalQty   = sum("Qty") || sum("Quantity");
+        const totalValue = sum("Total") || sum("Value") || rows.reduce((s,r)=>s+Number(r.Qty||0)*Number(r.MRP||0),0);
+        const vendors    = new Set(rows.map(r => r.Vendor || r.vendor || r.SupplierName || "")).size;
+        cols = 4;
+        cards = [
+            card("Total Receipts", fmt(rows.length),  "bg-blue-50 text-blue-900",    "receipt"),
+            card("Total Qty",      fmt(totalQty),     "bg-emerald-50 text-emerald-900","layers"),
+            card("Total Value",    fmtC(totalValue),  "bg-violet-50 text-violet-900","indian-rupee"),
+            card("Vendors",        fmt(vendors),      "bg-orange-50 text-orange-900","truck"),
+        ];
+    }
+    else if (reportAction === "getSupplyReport") {
+        const totalQty   = sum("Qty");
+        const totalValue = sum("Total") || sum("Value");
+        const employees  = new Set(rows.map(r => r["Employee Code"] || r["Emp Code"] || r.empCode || "")).size;
+        const items      = new Set(rows.map(r => r.Item || r.item || "")).size;
+        cols = 4;
+        cards = [
+            card("Total Issues",   fmt(rows.length),  "bg-blue-50 text-blue-900",    "send"),
+            card("Total Qty",      fmt(totalQty),     "bg-emerald-50 text-emerald-900","layers"),
+            card("Total Value",    fmtC(totalValue),  "bg-violet-50 text-violet-900","indian-rupee"),
+            card("Employees",      fmt(employees),    "bg-orange-50 text-orange-900","users"),
+        ];
+    }
+    else if (reportAction === "getProducts") {
+        const categories = new Set(rows.map(r => r.Category || r.category || "")).size;
+        cols = 3;
+        cards = [
+            card("Total Products", fmt(rows.length),  "bg-blue-50 text-blue-900",    "box"),
+            card("Categories",     fmt(categories),   "bg-emerald-50 text-emerald-900","tag"),
+            card("Active Items",   fmt(rows.filter(r=>String(r.Status||"active").toLowerCase()!=="inactive").length), "bg-green-50 text-green-900","check-circle"),
+        ];
+    }
+    else if (reportAction === "getEmployeeList") {
+        const teams = new Set(rows.map(r => r["Team Wise"] || r.Team || "")).size;
+        cols = 3;
+        cards = [
+            card("Total Employees",fmt(rows.length),  "bg-blue-50 text-blue-900",    "users"),
+            card("Teams",          fmt(teams),        "bg-emerald-50 text-emerald-900","layout-grid"),
+            card("Active",         fmt(rows.filter(r=>String(r.Status||"active").toLowerCase()!=="inactive").length),"bg-green-50 text-green-900","user-check"),
+        ];
+    }
+    else if (reportAction === "getVendors") {
+        cols = 3;
+        cards = [
+            card("Total Vendors",  fmt(rows.length),  "bg-blue-50 text-blue-900",    "truck"),
+            card("Active",         fmt(rows.filter(r=>String(r.Status||"active").toLowerCase()!=="inactive").length),"bg-green-50 text-green-900","check-circle"),
+            card("Cities",         fmt(new Set(rows.map(r=>r.City||r.city||"")).size),"bg-orange-50 text-orange-900","map-pin"),
+        ];
+    }
+    else if (reportAction === "getEmployeeLedger") {
+        const totalValue = sum("Value");
+        const employees  = rows.length;
+        const detail     = window.empLedgerFiltered || window.empLedgerDetail || [];
+        const items      = new Set(detail.map(r => r.Item || "")).size;
+        cols = 4;
+        cards = [
+            card("Employees",      fmt(employees),    "bg-blue-50 text-blue-900",    "users"),
+            card("Transactions",   fmt(detail.length),"bg-emerald-50 text-emerald-900","receipt"),
+            card("Unique Items",   fmt(items),        "bg-orange-50 text-orange-900","package"),
+            card("Total Value",    fmtC(totalValue),  "bg-violet-50 text-violet-900","indian-rupee"),
+        ];
+    }
+    else if (reportAction === "getProductLedger") {
+        const totalReceived  = sum("Received");
+        const totalSupplied  = sum("Supplied");
+        const totalRemaining = sum("Remaining");
+        cols = 4;
+        cards = [
+            card("Products",       fmt(rows.length),     "bg-blue-50 text-blue-900",    "box"),
+            card("Total Received", fmt(totalReceived),   "bg-emerald-50 text-emerald-900","arrow-down-circle"),
+            card("Total Supplied", fmt(totalSupplied),   "bg-orange-50 text-orange-900","arrow-up-circle"),
+            card("Remaining Stock",fmt(totalRemaining),  "bg-violet-50 text-violet-900","layers"),
+        ];
+    }
+    else if (reportAction === "getTeamLedger") {
+        const detail    = window.teamLedgerFiltered || window.teamLedgerDetail || [];
+        const totalQty  = sum("Total Qty");
+        const totalVal  = sum("Total Value");
+        const totalEmps = rows.reduce((s, r) => s + (r.Employees || 0), 0);
+        const totalTxns = rows.reduce((s, r) => s + (r.Transactions || 0), 0);
+        cols = 4;
+        cards = [
+            card("Teams",          fmt(rows.length),  "bg-blue-50 text-blue-900",      "layout-grid"),
+            card("Employees",      fmt(totalEmps),    "bg-emerald-50 text-emerald-900","users"),
+            card("Transactions",   fmt(totalTxns),    "bg-orange-50 text-orange-900",  "receipt"),
+            card("Total Value",    fmtC(totalVal),    "bg-violet-50 text-violet-900",  "indian-rupee"),
+        ];
+    }
+    else {
+        // Generic fallback
+        const totalQty   = sum("Qty") || sum("Quantity");
+        const totalValue = sum("Total") || sum("Value");
+        cols = 3;
+        cards = [
+            card("Total Records",  fmt(rows.length),  "bg-blue-50 text-blue-900",    "database"),
+            card("Total Qty",      fmt(totalQty),     "bg-emerald-50 text-emerald-900","layers"),
+            card("Total Value",    fmtC(totalValue),  "bg-violet-50 text-violet-900","indian-rupee"),
+        ];
+    }
+
+    inner.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    inner.innerHTML = cards.join("");
+    wrap.classList.remove("hidden");
+    lucide.createIcons();
 }
 let charts = [];
 
@@ -860,6 +1876,24 @@ function filterInventoryTable() {
 
     // store filtered rows for export
     window.filteredInventory = filtered;
+}
+
+// ===== CLEAR FILTERS =====
+function clearFilters() {
+    document.getElementById("dateFrom").value = "";
+    document.getElementById("dateTo").value = "";
+    document.getElementById("teamFilter").value = "";
+    document.getElementById("employeeFilter").value = "";
+    document.getElementById("productFilter").value = "";
+
+    // Clear inventory search too if visible
+    const invSearch = document.getElementById("inventorySearch");
+    if (invSearch) invSearch.value = "";
+    const lowToggle = document.getElementById("lowStockToggle");
+    if (lowToggle) lowToggle.checked = false;
+
+    document.getElementById("filterStatus").textContent = "Full Dataset";
+    applyFilters();
 }
 
 // ===== LIVE FILTER EVENTS =====
