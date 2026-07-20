@@ -370,7 +370,7 @@ function numberToWords(n){const o=["","One","Two","Three","Four","Five","Six","S
 function buildPreview(id,emp,rows){
   const name=emp['Employee Name']||rows[0].empName||'';
   const code=emp['Employee Code']||rows[0].empCode||'';
-  const addr=emp['Address']||''; const city=emp['City']||''; const pin=emp['Pincode']||'';
+  const addr=emp['Designation']||''; const city=emp['Department']||''; const pin=emp['Division']||'';
   const mob=emp['MobileNo']||''; const mail=emp['New Mail Id']||'';
   const date=rows[0].date || new Date().toLocaleDateString('en-GB');
   let tot=0; let itemRows='';
