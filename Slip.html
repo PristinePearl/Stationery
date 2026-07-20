@@ -372,7 +372,7 @@ function buildPreview(id,emp,rows){
   const code=emp['Employee Code']||rows[0].empCode||'';
   const addr=emp['Address']||''; const city=emp['City']||''; const pin=emp['Pincode']||'';
   const mob=emp['MobileNo']||''; const mail=emp['New Mail Id']||'';
-  const date=new Date().toLocaleDateString('en-GB');
+  const date=rows[0].date || new Date().toLocaleDateString('en-GB');
   let tot=0; let itemRows='';
 
   
@@ -519,7 +519,7 @@ function printInvoiceSameTab(){
     const code=emp['Employee Code']||rows[0].empCode||'';
     const addr=emp['Address']||''; const city=emp['City']||''; const pin=emp['Pincode']||'';
     const mob=emp['MobileNo']||''; const mail=emp['New Mail Id']||'';
-    const date=new Date().toLocaleDateString('en-GB');
+    const date=rows[0].date || new Date().toLocaleDateString('en-GB');
     let tot=0; let itemRows='';
 
     // --- START: USE LIVE TRANSPORT DATA FROM STATE (Print) ---
