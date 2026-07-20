@@ -907,6 +907,7 @@ toggleReceiptMode();
   async function saveReceipt(){
     const mode = document.getElementById('receiptMode')?.value || 'fetch';
 const reqId = (mode === 'manual') ? 'MANUAL' : (document.getElementById('recReqId').value || '');
+    const date = document.getElementById('recDate').value || '';   // ← FIX: capture selected date
     const purchasedFrom = document.getElementById('recPurchasedFrom').value || '';
     const remarksOverall = document.getElementById('recRemarks').value || '';
     const receiptType = document.querySelector('input[name="receiptType"]:checked').value || 'Medicine';
@@ -930,6 +931,7 @@ console.log("RECEIPT ROWS:", rows);
 
 
     const payload = {
+      date,               // ← FIX: send selected date to backend
       reqId,
       purchasedFrom,
       remarksOverall,
@@ -1081,6 +1083,7 @@ tr.querySelector('.s-total').value = to2(q * m);
   async function saveSupply(){
     const emp = document.getElementById('supTo').value;
     if(!emp) return alert('Select Employee');
+    const date = document.getElementById('supDate').value || '';   // ← FIX: capture selected date
     const rows = [...document.querySelectorAll('#supTable tbody tr')].map(tr=>{
       const s = tr.querySelector('.s-prod'); if(!s || !s.value) return null;
       const o = JSON.parse(decodeURIComponent(s.value));
@@ -1102,7 +1105,7 @@ return {
 };
     }).filter(r=> r && num(r.qty) > 0);
     if(!rows.length) return alert('No rows');
-    const res = await post('saveSupply',{ supTo: emp, rows });
+    const res = await post('saveSupply',{ date, supTo: emp, rows });   // ← FIX: send selected date to backend
     if(res && res.success) alert(res.message || 'Saved'); else alert('Save failed: '+(res.message||''));
     document.querySelector('#supTable tbody').innerHTML = '';
     clearCache("inventory");
